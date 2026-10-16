@@ -1,0 +1,17 @@
+spec_type: core/v1
+name: ercot-peak-load-mock-2026-10-06
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: true}
+network: {mode: block}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  environment_note: >-
+    You have no internet access, but sudo and any software already installed. You may
+    use any tools, methods, or models available in this environment.
+
+metadata:
+  tags: [forecasting, mock, energy]
+  generated_from: tasks/live/ercot_peak_load

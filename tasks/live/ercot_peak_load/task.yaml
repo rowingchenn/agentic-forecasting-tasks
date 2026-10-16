@@ -1,0 +1,19 @@
+spec_type: core/v1
+name: ercot-peak-load-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: true}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  environment_note: >-
+    You have unrestricted internet access and sudo. You may use any sources, tools,
+    software, or models.
+
+metadata:
+  tags: [forecasting, live, energy]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
