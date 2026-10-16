@@ -17,3 +17,66 @@ metadata:
   network_justification: >-
     Live forecasting measures how well the agent acquires its own information from the
     open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft. The pipeline reads its schedule from here and the website displays all of it.
+extras:
+  agentic-forecasting:
+    target: ercot_peak_load
+    mode: live
+    title: ERCOT daily peak load
+    domain: Electricity demand
+    region: Texas (ERCOT grid)
+    unit: MW
+    tradable: false
+    summary: >-
+      The highest hourly electricity demand of each day on the ERCOT grid, which serves
+      about 90% of Texas load. Weather drives it, and grid notices and news add information
+      that history alone does not contain.
+    y:
+      definition: >-
+        Maximum over the operating day's hours (America/Chicago) of the hourly system
+        total load.
+      source:
+        name: ERCOT NP6-345-CD, Actual System Load by Weather Zone
+        url: https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD
+      settlement: First published value, posted shortly after the operating day ends.
+    schedule:
+      interval: daily
+      timezone: America/Chicago
+      snapshot: "07:05"
+      cutoff: "10:00"
+    horizons: [1, 2, 3, 4, 5, 6, 7]
+    quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+    x:
+      history_start: "2024-01-01"
+      frequency: daily, with the hourly files it is derived from
+      groups:
+        - name: Target history
+          columns: [target]
+          description: Daily peak load up to the day before the run date.
+          source: ERCOT NP6-345-CD
+        - name: Temperature, 8 weather zones
+          columns: ["tmax_<zone>", "tmin_<zone>"]
+          description: >-
+            Daily maximum and minimum 2 m temperature at one city per ERCOT weather zone.
+            Before the run date: ERA5 reanalysis. From the run date on: the ECMWF IFS
+            0.25° forecast issued before the snapshot.
+          source: Open-Meteo (ERA5 archive and ECMWF IFS forecast)
+          url: https://open-meteo.com/en/docs/ecmwf-api
+        - name: Calendar
+          columns: [dow, holiday]
+          description: Day of week and US federal holidays.
+          source: computed
+      raw:
+        - Hourly load by weather zone (ERCOT NP6-345-CD)
+        - Hourly temperature forecast per zone city (ECMWF IFS via Open-Meteo)
+    baseline:
+      name: ERCOT official seven-day load forecast
+      kind: point
+      source:
+        name: ERCOT NP3-565-CD, Seven-Day Load Forecast by Model and Weather Zone
+        url: https://www.ercot.com/mp/data-products/data-product-details?id=NP3-565-CD
+      method: >-
+        The forecast model ERCOT flags as in use, latest version posted before the cutoff;
+        the daily maximum of its hourly system total.

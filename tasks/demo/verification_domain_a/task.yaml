@@ -1,8 +1,0 @@
-spec_type: core/v1
-name: verification-local-a
-image: {kind: container}
-resources: { cpus: 1, memory_mb: 1024 }
-network: { mode: block }
-timeouts: { setup: 60, agent: 300, verify: 120 }
-artifacts: [/home/user/output]
-metadata: { tags: [demo, verification, task-local] }

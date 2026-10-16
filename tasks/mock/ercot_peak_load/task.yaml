@@ -1,0 +1,25 @@
+spec_type: core/v1
+name: ercot-peak-load-mock
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: true}
+network: {mode: block}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  environment_note: >-
+    You have no internet access. Materials gathered from the internet on the run date
+    are in `/home/user/input/archive/`, one folder per collector, each with an
+    `index.jsonl` describing its files. You have sudo and may use any software, methods,
+    or models available in this environment.
+
+metadata:
+  tags: [forecasting, mock, energy]
+
+# Offline replay of one live run day: X_d plus the union of the materials every live agent
+# saved that day. instruction.md, verify/ and oracle/ are copies of the live Task's.
+extras:
+  agentic-forecasting:
+    target: ercot_peak_load
+    mode: mock

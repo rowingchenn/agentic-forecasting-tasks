@@ -1,5 +1,0 @@
-schema_version = 1
-name = "task-proof"
-transport = "stdio"
-command = "python3"
-args = ["{mcp}/task_proof_mcp.py"]

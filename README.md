@@ -1,99 +1,51 @@
-# ALE Tasks base
+# agentic-forecasting-tasks
 
-Reference collection of independent `core/v1` container and VM Tasks. This repository contains no
-runtime manifest or shared Task code; each folder below `tasks/` is complete on its own.
-
-## Folder layout
+ALE Tasks for live forecasting by general agents. Each forecasting target has two Tasks:
 
 ```text
-tasks/<path>/
-├── task.yaml
-├── instruction.md
-├── image/
-│   ├── Dockerfile
-│   └── assets/                 # optional large input, ignored by Git
-├── setup/
-│   ├── run.sh
-│   └── assets/                 # optional dynamic-stage data, ignored
-├── verify/
-│   ├── run.sh
-│   ├── verify.py
-│   ├── Dockerfile              # optional separate verifier image
-│   └── assets/                 # optional references, ignored
-├── oracle/
-│   ├── run.sh
-│   └── assets/                 # optional oracle-only data, ignored
-└── tools/
-    ├── skills/<name>/SKILL.md
-    └── mcp/<server>.toml
+tasks/
+├── live/<target>/   the real-time Task: open internet, sudo, the run day's structured input
+└── mock/<target>/   offline replay of one archived live day: no internet, no hosted search,
+                     the same structured input plus every live agent's saved materials
 ```
 
-Every Task explicitly declares `image.kind: container|vm`. A fixed `image/Dockerfile`
-selects a local build and wins over an authored ref; without it, `image.ref` is required.
-Stable packages, services, permissions, and solver-visible state belong in the image.
-`setup/` performs only irreducibly episode-dynamic initialization.
+Both follow the [ALE Task format](https://github.com/AgentsLastExam/ale/blob/main/docs/specs/task-authoring.md)
+(`core/v1`). `instruction.md`, `verify/` and `oracle/` are identical between the two; only
+`task.yaml`, `image/` and `setup/` differ.
 
-There is no `domain.yaml`, repository Kit, shared image, implicit `files/`, or top-level
-Skills/MCP. Top-level manifest fields define `base`; variants may override only params,
-resources, and timeouts.
+## What a target Task contains
 
-## Assets
+- `tasks/live/<target>/task.yaml` carries the target definition under
+  `extras.agentic-forecasting`: target y and its settlement source, run schedule and cutoff,
+  horizons H, quantile levels, the structured input X with its sources and history range,
+  and the expert baseline B with where it comes from. The pipeline and the website read it
+  from here.
+- `setup/run.sh` installs the run day's data, which the pipeline stages into
+  `setup/assets/` before each run (ignored by Git):
+  - live: `x/` = X_d → `/home/user/input/x/` (read-only)
+  - mock: `x/` and `archive/<system>/` (materials each live agent saved) →
+    `/home/user/input/{x,archive}/`
+- The agent writes `/home/user/output/forecast.json` (one quantile set per target date) and
+  `/home/user/output/collected/` with an `index.jsonl` of the materials it found useful.
+- `verify/` checks only that the submission is well-formed. Accuracy is scored after the
+  real values are published, outside ALE, by the run repository.
+- The mock image writes `/etc/codex/managed_config.toml` (`web_search = "disabled"`) and
+  `/etc/claude-code/managed-settings.json` (deny `WebSearch`, `WebFetch`). Hosted search runs
+  at the model provider, so a blocked network alone would not stop it.
 
-Large files remain directly below their owning stage. Each Task repository maps to a
-same-named Hugging Face dataset in the configured assets collection. Pull restores the
-exact local folder structure and push uploads only stage asset roots.
+## Targets
 
-```bash
-cd /absolute/path/to/ale
-export ALE_ASSETS_COLLECTION='Chennzi/assets-6a72bdee6d6b38dc9036c15c'
+| Target | y | Run interval | Horizons | Baseline B |
+|---|---|---|---|---|
+| `ercot_peak_load` | ERCOT daily system peak load (MW) | daily, cutoff 10:00 CT | 1–7 days | ERCOT seven-day load forecast |
 
-uv run ale assets status /absolute/path/to/ale-tasks-base
-uv run ale assets pull /absolute/path/to/ale-tasks-base
-uv run ale assets pull --force /absolute/path/to/ale-tasks-base/tasks/demo/external_assets
-uv run ale assets push /absolute/path/to/ale-tasks-base/tasks/demo/external_assets
-```
+## Adding a target
 
-The public `Chennzi/ale-tasks-base` dataset was last synchronized for this contract at
-commit `863a27f00880dff03001b524f371af025aca548e`.
+1. Copy `tasks/live/ercot_peak_load` to `tasks/live/<target>` and rewrite `task.yaml`
+   (keep the Task name `<target with dashes>-live` and the `extras` keys),
+   `instruction.md`, and the oracle.
+2. Copy the mock Task the same way, keeping the shared files identical.
+3. Add `af/targets/<target>.py` and a timer in the run repository.
 
-There is no runtime pull and no asset declaration in `task.yaml`. Dockerfiles use normal
-paths such as:
-
-```dockerfile
-COPY assets/public.txt /home/user/input/public.txt
-```
-
-Setup, verifier, and oracle code use ordinary relative `assets/...` paths. A Task without
-an assets directory requires no Hugging Face configuration.
-
-## Authoring commands
-
-Run the engine CLI from the ALE checkout; this repository does not install `ale-run`:
-
-```bash
-cd /absolute/path/to/ale
-uv run ale new-task /absolute/path/to/ale-tasks-base/tasks/my_task
-uv run ale lint /absolute/path/to/ale-tasks-base
-uv run ale prepare /absolute/path/to/ale-tasks-base/tasks/my_task
-uv run ale validate /absolute/path/to/ale-tasks-base/tasks/my_task
-uv run ale run /absolute/path/to/ale-tasks-base/tasks/my_task --agent oracle
-```
-
-Unqualified selection means base. Use `@hard` or an ordered selector such as
-`@{base,hard}` for additional variants.
-
-The deterministic examples can be validated without model credentials:
-
-```bash
-just lint
-just validate
-```
-
-Judge demos require their corresponding run-level model/endpoint/credential and exact
-Agent Judge CLI version configuration. The `verification_separate` demo shows a local
-verifier image selected by `verify/Dockerfile` plus explicit `verify.image.kind`, and exact
-restoration of one file plus one directory artifact. External verifier images use the
-same structured `{kind, ref}` shape. Omission reuses the prepared solver image.
-
-Start with the engine's `docs/README.md`; the Task workflow is in
-`docs/guides/task-authoring.md` and the format contract in `docs/specs/task-folder.md`.
+`just lint` checks the Tasks with the engine from the sibling run repository
+(`../agentic-forecasting/ale`).
