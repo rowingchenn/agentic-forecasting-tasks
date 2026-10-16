@@ -1,7 +1,7 @@
 # Task authoring surface.
 #
 # Run these recipes with a sibling ALE engine checkout.
-ENGINE := "../ale"
+ENGINE := "../agentic-forecasting-ale"
 
 _default:
     @just --list

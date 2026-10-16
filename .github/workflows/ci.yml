@@ -10,4 +10,4 @@ permissions:
 
 jobs:
   check:
-    uses: AgentsLastExam/ale/.github/workflows/task-check.yml@main
+    uses: rowingchenn/agentic-forecasting-ale/.github/workflows/task-check.yml@main
