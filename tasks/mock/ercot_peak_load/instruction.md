@@ -41,13 +41,15 @@ matter.
 
 ## Collected materials
 
-Save the materials you found useful for this forecast, such as articles, reports, or data
-you downloaded, as regular files (not symbolic links) under `/home/user/output/collected/`.
-List each saved file in `/home/user/output/collected/index.jsonl`, one JSON object per
-line:
+Save copies of the external materials you found useful for this forecast, such as
+articles, reports, forecasts by others, or data you downloaded, as regular files (not
+symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+outside this environment: not the provided input files, and not your own code, analyses,
+or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON
+object per line:
 
 ```json
-{"path": "<path relative to collected/>", "source": "<URL or origin>", "note": "<why it is useful>"}
+{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}
 ```
 
 Write an empty `index.jsonl` if you saved nothing.
