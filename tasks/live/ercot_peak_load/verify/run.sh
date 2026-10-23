@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 set -euo pipefail
-exec python3 verify.py
+exec "$ALE_VERIFY_PYTHON" verify.py

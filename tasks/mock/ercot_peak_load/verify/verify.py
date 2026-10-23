@@ -4,7 +4,7 @@ import json
 import math
 from pathlib import Path
 
-from ale_verify import CheckResult, Verification
+from ale_verify import write
 
 TASK = json.loads(Path("/home/user/input/x/task.json").read_text())
 OUTPUT = Path("/home/user/output")
@@ -40,21 +40,24 @@ def forecast_problems(data: object) -> list[str]:
     return problems
 
 
-def forecast_valid() -> CheckResult:
+def forecast_valid() -> dict:
     try:
         data = json.loads((OUTPUT / "forecast.json").read_text())
     except (OSError, ValueError) as exc:
-        return CheckResult(0.0, f"forecast.json is unreadable: {exc}")
+        return {"score": 0.0, "diagnostic": f"forecast.json is unreadable: {exc}"}
     problems = forecast_problems(data)
-    return CheckResult(float(not problems), "; ".join(problems)[:2000] or "valid forecast")
+    return {
+        "score": float(not problems),
+        "diagnostic": "; ".join(problems)[:2000] or "valid forecast",
+    }
 
 
-def materials() -> tuple[CheckResult, int]:
+def materials() -> tuple[dict, int]:
     index = COLLECTED / "index.jsonl"
     try:
         lines = index.read_text().splitlines()
     except OSError as exc:
-        return CheckResult(0.0, f"collected/index.jsonl is unreadable: {exc}"), 0
+        return {"score": 0.0, "diagnostic": f"collected/index.jsonl is unreadable: {exc}"}, 0
     root = COLLECTED.resolve()
     count = 0
     for number, line in enumerate(lines, 1):
@@ -63,21 +66,30 @@ def materials() -> tuple[CheckResult, int]:
         try:
             entry = json.loads(line)
         except ValueError:
-            return CheckResult(0.0, f"index.jsonl line {number} is not JSON"), count
+            return {"score": 0.0, "diagnostic": f"index.jsonl line {number} is not JSON"}, count
         path, source = entry.get("path"), entry.get("source")
         if not isinstance(path, str) or not isinstance(source, str) or not source.strip():
-            return CheckResult(0.0, f"index.jsonl line {number} needs path and source"), count
+            return {
+                "score": 0.0,
+                "diagnostic": f"index.jsonl line {number} needs path and source",
+            }, count
         target = (root / path).resolve()
         if root not in target.parents or not target.is_file():
-            return CheckResult(0.0, f"line {number}: {path} is not a file in collected/"), count
+            return {
+                "score": 0.0,
+                "diagnostic": f"line {number}: {path} is not a file in collected/",
+            }, count
         count += 1
-    return CheckResult(1.0, f"{count} materials listed"), count
+    return {"score": 1.0, "diagnostic": f"{count} materials listed"}, count
 
 
-verification = Verification()
-verification.check("forecast_valid", forecast_valid())
+forecast_result = forecast_valid()
 materials_result, material_count = materials()
-verification.check("materials_valid", materials_result)
-verification.stat("materials", material_count)
-verification.aggregate("overall")
-verification.write()
+write(
+    {
+        "overall": (forecast_result["score"] + materials_result["score"]) / 2,
+        "forecast_valid": forecast_result,
+        "materials_valid": materials_result,
+        "materials": material_count,
+    }
+)
