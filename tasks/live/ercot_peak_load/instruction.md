@@ -1,18 +1,18 @@
 Forecast the daily peak electricity demand of the ERCOT grid (Texas) for the next seven
 days. ${environment_note} You have about 90 minutes.
 
-## Inputs
+## The target
 
-`/home/user/input/x/` (read-only) holds the structured data for this run:
+For each operating day (midnight to midnight, ${timezone}), the target is the largest
+hourly value of ERCOT's total system load, in MW: the maximum over the day's hours of the
+`total` column in ERCOT report NP6-345-CD, *Actual System Load by Weather Zone*, whose
+values are averages over each hour ending. A forecast is settled on the value ERCOT first
+publishes for that day. Instantaneous or 5-minute values, such as those on ERCOT's
+real-time dashboards, measure a different quantity.
 
-- `task.json`: the run date, the seven target dates, the required quantile levels, the
-  exact target definition, and descriptions of every column.
-- `series.csv`: one row per day. `target` is the observed daily peak load in MW and is
-  empty after `last_observed`. The other columns are covariates whose values are known
-  for the forecast window: daily maximum and minimum temperature forecasts for one city
-  in each ERCOT weather zone, day of week, and US federal holidays.
-- `raw/`: the hourly load by weather zone and the hourly temperature forecast that
-  `series.csv` was derived from.
+`/home/user/input/task.json` gives the run date, the target dates (the run date plus
+${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
+quantile levels ${quantile_levels}. Beyond that file, no data is provided.
 
 ## Output
 
@@ -41,12 +41,11 @@ matter.
 
 ## Collected materials
 
-Save copies of the external materials you found useful for this forecast, such as
-articles, reports, forecasts by others, or data you downloaded, as regular files (not
-symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
-outside this environment: not the provided input files, and not your own code, analyses,
-or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON
-object per line:
+Save copies of the external materials you found useful for this forecast, such as data
+you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic
+links) under `/home/user/output/collected/`. Save only what you obtained from outside this
+environment, not your own code, analyses, or forecasts. List each saved file in
+`/home/user/output/collected/index.jsonl`, one JSON object per line:
 
 ```json
 {"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}

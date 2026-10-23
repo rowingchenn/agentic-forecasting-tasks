@@ -5,7 +5,7 @@ RUN python3 -m pip install --no-cache-dir \
         scikit-learn==1.5.2 pyarrow==18.1.0 \
     && install -d -o user -g user /home/user/output
 
-# Hosted search runs at the model provider, outside the sandbox network, so a blocked
+# Mock: hosted search runs at the model provider, outside the sandbox network, so a blocked
 # network alone does not stop it. Managed settings take precedence over the agents' own
 # configuration: Codex reads /etc/codex/managed_config.toml, Claude Code
 # /etc/claude-code/managed-settings.json.

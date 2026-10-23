@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Known-good submission: weekly seasonal naive with spread from historical week-over-week ratios.
+# Reference forecast from X_d (assets/x/, never shown to an agent): weekly seasonal naive
+# with spread from historical week-over-week ratios.
 set -euo pipefail
 
-python3 - <<'PY'
+python3 - assets/x <<'PY'
 import json
+import sys
 from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
 
-x = Path("/home/user/input/x")
+x = Path(sys.argv[1])
 task = json.loads((x / "task.json").read_text())
 target = pd.read_csv(x / "series.csv", index_col="timestamp", parse_dates=True)["target"]
 last = date.fromisoformat(task["last_observed"])

@@ -2,15 +2,21 @@ spec_type: core/v1
 name: ercot-peak-load-live
 image: {kind: container}
 
-resources: {cpus: 4, memory_mb: 8192, sudo: true}
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
 network: {mode: open}
 timeouts: {setup: 300, agent: 5400, verify: 120}
 artifacts: [/home/user/output]
 
 params:
   environment_note: >-
-    You have unrestricted internet access and sudo. You may use any sources, tools,
-    software, or models.
+    You have unrestricted internet access. You may use any sources, tools, software, or
+    models.
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: America/Chicago
+  cutoff: "10:00"
+  horizons: [1, 2, 3, 4, 5, 6, 7]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 metadata:
   tags: [forecasting, live, energy]
@@ -19,11 +25,11 @@ metadata:
     open internet; restricting access would remove the capability being evaluated.
 
 # The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
-# draft. The pipeline reads its schedule from here and the website displays all of it.
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
 extras:
   agentic-forecasting:
     target: ercot_peak_load
-    mode: live
     title: ERCOT daily peak load
     domain: Electricity demand
     region: Texas (ERCOT grid)
@@ -42,15 +48,13 @@ extras:
         url: https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD
       settlement: First published value, posted shortly after the operating day ends.
     schedule:
-      interval: daily
-      timezone: America/Chicago
-      snapshot: "07:05"
-      cutoff: "10:00"
-    horizons: [1, 2, 3, 4, 5, 6, 7]
-    quantiles: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+      snapshot: "07:05"         # when a run day starts, in params.timezone
+      every_days: 2             # a run day every second day; truth is recorded daily
+      first_run: "2026-10-23"
     x:
       history_start: "2024-01-01"
       frequency: daily, with the hourly files it is derived from
+      given_to: TSFMs only; agents find their own information
       groups:
         - name: Target history
           columns: [target]
@@ -72,6 +76,8 @@ extras:
         - Hourly load by weather zone (ERCOT NP6-345-CD)
         - Hourly temperature forecast per zone city (ECMWF IFS via Open-Meteo)
     baseline:
+      system: ercot-official
+      label: ERCOT official
       name: ERCOT official seven-day load forecast
       kind: point
       source:

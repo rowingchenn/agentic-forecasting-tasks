@@ -6,7 +6,7 @@ from pathlib import Path
 
 from ale_verify import write
 
-TASK = json.loads(Path("/home/user/input/x/task.json").read_text())
+TASK = json.loads(Path("/home/user/input/task.json").read_text())
 OUTPUT = Path("/home/user/output")
 COLLECTED = OUTPUT / "collected"
 
