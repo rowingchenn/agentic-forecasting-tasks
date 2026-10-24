@@ -42,11 +42,12 @@ rejects unknown top-level fields, so the target lives in `params` and
 | `params.timezone`, `params.cutoff` | submissions are due at `cutoff` local time on the run date |
 | `params.horizons` | target dates as days after the run date |
 | `params.quantile_levels` | the quantiles every forecast submits |
-| `extras…title`, `domain`, `region`, `unit`, `tradable`, `summary` | shown on the website |
+| `extras…title`, `question`, `summary`, `region`, `unit` | shown on the website; `question` is the one-sentence statement of what is forecast |
+| `extras…taxonomy`, `driver`, `tradable` | where the task sits in [`taxonomy.yaml`](taxonomy.yaml): a `<domain>/<leaf>`, the driver facet, and whether it is a tradable control |
 | `extras…y` | the series, its source and how it is settled (first published value) |
 | `extras…schedule.snapshot` | when a run day starts, in `params.timezone` |
 | `extras…schedule.every_days`, `first_run` | a run day every `every_days` days from `first_run`; truth is recorded daily regardless |
-| `extras…x` | X_d: the structured input the TSFMs receive, its column groups, sources and history start |
+| `extras…x` | X_d: the curated input the TSFMs receive. Each column group has `what` it is and `why` it should help, in plain words, plus its source; the website shows them as written |
 | `extras…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read |
 
 `params` must all appear in `instruction.md` (ALE lint enforces it), which also keeps the
@@ -96,18 +97,29 @@ ale validate tasks/mock/ercot_peak_load/2026-10-22
 ale run tasks/mock/ercot_peak_load/2026-10-22 --config <agent>.toml
 ```
 
+## Taxonomy
+
+[`taxonomy.yaml`](taxonomy.yaml) organises targets by the system that generates the series
+(energy, public health, economy and labor, financial markets, environment, transport and
+mobility, online attention), with leaves inside each domain and two facets across them:
+the main driver of variation, and whether the target is a tradable price (a control).
+Every live Task names one leaf. The website counts tasks per node, empty ones included,
+and lists candidate targets for the gaps, so new targets can be chosen for coverage.
+Revise the taxonomy in the same pull request when a target fits no leaf.
+
 ## Targets
 
 | Target | y | Run days | Horizons | Baseline B |
 |---|---|---|---|---|
-| `ercot_peak_load` | ERCOT daily system peak load (MW) | every 2 days, cutoff 10:00 CT | 1–7 days | ERCOT seven-day load forecast |
+| `ercot_peak_load` | ERCOT daily system peak load (MW) | daily, cutoff 10:00 CT | 1–7 days | ERCOT seven-day load forecast |
 
 ## Adding a target
 
 1. Copy `tasks/live/ercot_peak_load` to `tasks/live/<target>`. Keep the Task name
    `<target with dashes>-live`.
-2. Rewrite `task.yaml`, `instruction.md` and `setup/fetch.py`; add libraries to `image/`
-   if the target needs them. `setup/run.sh`, `verify/` and `oracle/` work for any target.
+2. Rewrite `task.yaml` (including `question`, `taxonomy` and the `what`/`why` of each
+   covariate group), `instruction.md` and `setup/fetch.py`; add libraries to `image/` if
+   the target needs them. `setup/run.sh`, `verify/` and `oracle/` work for any target.
 3. Check it from the pipeline repository, next to this one:
 
    ```bash

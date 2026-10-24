@@ -1,0 +1,111 @@
+# Taxonomy of forecasting targets. Every live Task names one leaf as
+# extras.agentic-forecasting.taxonomy ("<domain>/<leaf>"); the website counts Tasks per node,
+# empty nodes included, so gaps in coverage stay visible. Revise it as targets are added.
+#
+# Domains group targets by the system that generates the series. Two facets cut across them:
+#   driver    the main source of variation that public context can explain
+#   tradable  whether the target is a price in a liquid market. By the semi-strong
+#             efficient-market hypothesis, public context adds little to its mean forecast,
+#             so tradable targets serve as controls.
+# Examples are candidate targets, not commitments.
+version: 1
+
+domains:
+  - id: energy
+    name: Energy
+    leaves:
+      - id: electricity-demand
+        name: Electricity demand
+        examples: [ERCOT daily peak load, PJM daily load, CAISO daily load]
+      - id: renewable-generation
+        name: Renewable generation
+        examples: [ERCOT daily wind output, CAISO daily solar output]
+      - id: fuel-inventories
+        name: Fuel inventories
+        examples: [EIA weekly natural gas storage, EIA weekly crude oil inventories]
+      - id: energy-prices
+        name: Energy prices
+        examples: [Henry Hub natural gas spot, US retail gasoline price]
+
+  - id: health
+    name: Public health
+    leaves:
+      - id: respiratory-illness
+        name: Respiratory illness
+        examples: [CDC ILINet, influenza hospital admissions, COVID-19 hospital admissions]
+      - id: other-infectious-disease
+        name: Other infectious disease
+        examples: [Dengue cases, norovirus outbreaks]
+      - id: health-care-use
+        name: Health-care use
+        examples: [Emergency department visits]
+
+  - id: economy
+    name: Economy and labor
+    leaves:
+      - id: labor-market
+        name: Labor market
+        examples: [US initial jobless claims]
+      - id: consumer-prices
+        name: Consumer prices
+        examples: [Food price indices, used car prices]
+      - id: economic-activity
+        name: Economic activity
+        examples: [Retail foot traffic, freight volumes]
+
+  - id: markets
+    name: Financial markets
+    leaves:
+      - id: commodities
+        name: Commodities
+        examples: [Corn futures, crude oil futures]
+      - id: currencies
+        name: Currencies
+        examples: [USD/JPY]
+      - id: equities
+        name: Equities and volatility
+        examples: [S&P 500 index, VIX]
+
+  - id: environment
+    name: Environment
+    leaves:
+      - id: air-quality
+        name: Air quality
+        examples: [PM2.5 concentration, ozone]
+      - id: hydrology
+        name: Hydrology
+        examples: [River discharge, reservoir storage]
+      - id: natural-hazards
+        name: Natural hazards
+        examples: [Wildfire burned area]
+
+  - id: mobility
+    name: Transport and mobility
+    leaves:
+      - id: air-travel
+        name: Air travel
+        examples: [TSA checkpoint throughput]
+      - id: ground-transport
+        name: Ground transport
+        examples: [Transit ridership, road traffic counts]
+
+  - id: attention
+    name: Online attention
+    leaves:
+      - id: search-and-page-views
+        name: Search and page views
+        examples: [Wikipedia page views, Google Trends interest]
+      - id: media-and-social
+        name: Media and social activity
+        examples: [News article volume, GitHub stars]
+
+facets:
+  driver:
+    weather: Weather and climate
+    epidemic: Disease transmission
+    economic: Economic conditions and policy
+    behavioral: Human behavior and events
+    market: Market expectations
+  tradable:
+    "true": Tradable price (control)
+    "false": Not tradable

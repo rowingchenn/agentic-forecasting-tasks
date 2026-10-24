@@ -41,6 +41,11 @@ extras:
   agentic-forecasting:
     target: ercot_peak_load
     title: ERCOT daily peak load
+    question: >-
+      How high will electricity demand on the Texas grid peak on each of the next seven
+      days?
+    taxonomy: energy/electricity-demand   # a leaf of taxonomy.yaml
+    driver: weather                       # a facet of taxonomy.yaml
     domain: Electricity demand
     region: Texas (ERCOT grid)
     unit: MW
@@ -59,28 +64,34 @@ extras:
       settlement: First published value, posted shortly after the operating day ends.
     schedule:
       snapshot: "07:05"         # when a run day starts, in params.timezone
-      every_days: 2             # a run day every second day; truth is recorded daily
-      first_run: "2026-10-23"
+      every_days: 1             # a run day every day from first_run
+      first_run: "2026-10-16"
     x:
       history_start: "2024-01-01"
       frequency: daily, with the hourly files it is derived from
       given_to: TSFMs only; agents find their own information
       groups:
-        - name: Target history
+        - name: Peak load history
           columns: [target]
-          description: Daily peak load up to the day before the run date.
+          what: The target itself, every complete day up to the day before the run date.
+          why: Demand is persistent and seasonal; the history carries level, trend and weekly shape.
           source: ERCOT NP6-345-CD
-        - name: Temperature, 8 weather zones
+          url: https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD
+        - name: Temperature in the eight weather zones
           columns: ["tmax_<zone>", "tmin_<zone>"]
-          description: >-
-            Daily maximum and minimum 2 m temperature at one city per ERCOT weather zone.
-            Before the run date: ERA5 reanalysis. From the run date on: the ECMWF IFS
-            0.25° forecast issued before the snapshot.
-          source: Open-Meteo (ERA5 archive and ECMWF IFS forecast)
+          what: >-
+            Daily maximum and minimum air temperature in one city per ERCOT weather zone
+            (Houston, Dallas, Austin, Midland and four more): reanalysis for past days, the
+            ECMWF forecast issued before the run for the forecast window.
+          why: >-
+            Air conditioning and electric heating drive peak demand, so tomorrow's
+            temperature is the strongest single predictor, region by region.
+          source: Open-Meteo (ERA5 reanalysis, ECMWF IFS 0.25° forecast)
           url: https://open-meteo.com/en/docs/ecmwf-api
         - name: Calendar
           columns: [dow, holiday]
-          description: Day of week and US federal holidays.
+          what: Day of week and US federal holidays.
+          why: Offices and industry use less power on weekends and holidays.
           source: computed
       raw:
         - Hourly load by weather zone (ERCOT NP6-345-CD)
