@@ -38,6 +38,7 @@ rejects unknown top-level fields, so the target lives in `params` and
 
 | Field | Meaning |
 |---|---|
+| `params.environment_note`, `params.materials_note` | the only instruction text that differs between the live Task and its mock replays (no data provided, what to save); the pipeline sets the mock versions: network cut, forecast from the archive as of the run date, nothing to save |
 | `params.timezone`, `params.cutoff` | submissions are due at `cutoff` local time on the run date |
 | `params.horizons` | target dates as days after the run date |
 | `params.quantile_levels` | the quantiles every forecast submits |

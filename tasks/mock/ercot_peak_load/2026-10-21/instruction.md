@@ -1,5 +1,5 @@
 Forecast the daily peak electricity demand of the ERCOT grid (Texas) for the next seven
-days. ${environment_note} You have about 90 minutes.
+days. You have about 90 minutes.
 
 ## The target
 
@@ -10,9 +10,13 @@ values are averages over each hour ending. A forecast is settled on the value ER
 publishes for that day. Instantaneous or 5-minute values, such as those on ERCOT's
 real-time dashboards, measure a different quantity.
 
+## Inputs and environment
+
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
 ${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
-quantile levels ${quantile_levels}. Beyond that file, no data is provided.
+quantile levels ${quantile_levels}.
+
+${environment_note}
 
 ## Output
 
@@ -41,14 +45,4 @@ matter.
 
 ## Collected materials
 
-Save copies of the external materials you found useful for this forecast, such as data
-you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic
-links) under `/home/user/output/collected/`. Save only what you obtained from outside this
-environment, not your own code, analyses, or forecasts. List each saved file in
-`/home/user/output/collected/index.jsonl`, one JSON object per line:
-
-```json
-{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}
-```
-
-Write an empty `index.jsonl` if you saved nothing.
+${materials_note}

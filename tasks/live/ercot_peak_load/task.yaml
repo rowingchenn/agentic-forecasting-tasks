@@ -8,9 +8,19 @@ timeouts: {setup: 300, agent: 5400, verify: 120}
 artifacts: [/home/user/output]
 
 params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
   environment_note: >-
-    You have unrestricted internet access. You may use any sources, tools, software, or
-    models.
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
   # The forecast every run day asks for. setup/run.sh writes it into task.json for the
   # agent, verify/ checks submissions against it, and the pipeline schedules by it.
   timezone: America/Chicago
