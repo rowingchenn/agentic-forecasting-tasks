@@ -1,0 +1,26 @@
+# Offline replay of the ercot_peak_load run day 2026-10-25, generated from tasks/live/ercot_peak_load
+# by the agentic-forecasting pipeline (af/mock.py). Edit the live Task instead.
+spec_type: core/v1
+name: ercot-peak-load-mock-2026-10-25
+image: {kind: container}
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: block}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+params:
+  environment_note: 'This is an offline replay of the run date: the network is cut and web search
+    is disabled. Base your forecast on the materials in `/home/user/input/archive/`, which agents
+    gathered from the internet on the run date: one folder per agent, each with an `index.jsonl`
+    giving every file''s source URL and why it was saved. Apart from task.json and the archive,
+    no data is provided. You may use any software, methods, or models available in this environment.
+    Forecast as of the run date in task.json, whatever the system clock shows.'
+  materials_note: 'A replay has no outside sources, so there is nothing to collect: write an empty
+    `/home/user/output/collected/index.jsonl`.'
+  timezone: America/Chicago
+  cutoff: '10:00'
+  horizons: [1, 2, 3, 4, 5, 6, 7]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+metadata:
+  tags: [forecasting, mock, energy]
+extras:
+  agentic-forecasting: {target: ercot_peak_load, mode: mock, run_date: '2026-10-25'}
