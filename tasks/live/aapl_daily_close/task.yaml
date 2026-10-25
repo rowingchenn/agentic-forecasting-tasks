@@ -1,0 +1,127 @@
+spec_type: core/v1
+name: aapl-daily-close-live
+image:
+  kind: container
+resources:
+  cpus: 4
+  memory_mb: 8192
+  sudo: false
+network:
+  mode: open
+timeouts:
+  setup: 300
+  agent: 5400
+  verify: 120
+artifacts:
+- /home/user/output
+params:
+  environment_note: 'You have unrestricted internet access. Apart from task.json, no data is provided:
+    find the information you need yourself, using any sources, tools, software, or models.'
+  materials_note: 'Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under
+    `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your
+    own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`,
+    one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained
+    it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.'
+  timezone: America/New_York
+  cutoff: 09:25
+  horizons:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  quantile_levels:
+  - 0.1
+  - 0.2
+  - 0.3
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+metadata:
+  tags:
+  - forecasting
+  - live
+  - markets
+  - equities
+  network_justification: Live forecasting measures how well the agent acquires its own information from
+    the open internet; restricting access would remove the capability being evaluated.
+extras:
+  agentic-forecasting:
+    target: aapl_daily_close
+    title: AAPL daily closing price
+    question: What will Apple stock close at on each of the next seven calendar days?
+    taxonomy: markets/equities
+    driver: market
+    domain: Equity prices
+    region: United States (Nasdaq)
+    unit: USD per share
+    tradable: true
+    summary: 'A tradable-price control: forecast Apple closing prices using price history and public company
+      news. Non-trading days carry the latest session close.'
+    y:
+      definition: Yahoo Finance daily AAPL chart quote.close in USD, not adjclose and excluding extended-hours
+        quotes. Each calendar day uses the last regular-session close on or before that date. Weekends
+        and exchange holidays carry the prior close. Historical quote.close can be revised for splits;
+        no dividend adjustment is applied.
+      source:
+        name: Yahoo Finance AAPL daily chart
+        url: https://finance.yahoo.com/quote/AAPL/history/
+      settlement: First value observed by the pipeline after the calendar day is complete (America/New_York),
+        permanently retained by the pipeline truth table. Not a guarantee of the first exchange publication;
+        later Yahoo revisions do not overwrite settled truth.
+    schedule:
+      snapshot: 07:45
+      every_days: 1
+      first_run: '2026-10-26'
+    x:
+      history_start: '2024-01-01'
+      frequency: daily calendar dates; non-trading days carry the prior close
+      given_to: TSFMs only; agents find their own information. TSFMs consume series.csv numeric columns,
+        not raw news text.
+      ticker: AAPL
+      news_lookback_days: 7
+      groups:
+      - name: Closing price history
+        columns:
+        - target
+        what: Yahoo quote.close through yesterday; non-trading calendar days carry the previous regular-session
+          close. Future target values are empty.
+        why: Recent prices establish the current price level and historical variation.
+        source: Yahoo Finance daily chart
+        url: https://finance.yahoo.com/quote/AAPL/history/
+      - name: Calendar
+        columns:
+        - dow
+        - month
+        what: Day of week (Monday=0) and calendar month, including future dates.
+        why: Describe weekly and seasonal timing without inventing future market or news observations.
+        source: computed
+      - name: Company news archive
+        columns: []
+        what: Finnhub AAPL headlines, summaries, publication timestamps and source URLs retrieved over
+          the seven days before the snapshot. Saved in raw/news.csv, not a numerical TSFM covariate. Empty
+          responses do not establish complete historical coverage.
+        why: Earnings, products, regulation and other events may explain expectations. Live agents independently
+          find news; mock agents receive what live agents actually saved.
+        source: Finnhub company-news API
+        url: https://finnhub.io/docs/api/company-news
+      raw:
+      - Yahoo daily OHLCV (prices.csv), including provider adjustment data for audit only
+      - Finnhub company-news metadata and summaries (news.csv); publisher bodies are not fetched
+    baseline:
+      system: aapl-last-close
+      label: AAPL last close
+      name: No-change / random-walk reference (not an expert forecast)
+      kind: point
+      source:
+        name: Yahoo Finance AAPL daily chart
+        url: https://finance.yahoo.com/quote/AAPL/history/
+      method: Use the last completed regular-session quote.close known at snapshot time for every target
+        date. Reuse a cached response within one process; separate CLI calls refetch completed bars. Never use intraday prices. No official
+        short-term equity price forecast is available.
