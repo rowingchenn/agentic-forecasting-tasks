@@ -36,13 +36,24 @@ would require a separate pipeline design change.
 ## Host requirements
 
 Set `FINNHUB_API_KEY` securely in the pipeline host environment or its local `.env`.
+The pipeline loads that private `.env` before importing `setup/fetch.py`, just as it
+does for ERCOT credentials. This task reads the key with `os.environ`; no secret value
+belongs in `task.yaml`, image layers, setup assets, collected materials, or Git.
 Never commit it or include it in agent instructions. No Yahoo API key is required.
+
+This is a host-only credential: it is not injected into the agent sandbox. Live
+agents retain open-network access and may use other publicly accessible news sites,
+company disclosures and filings. They do not need Finnhub to complete the task. The
+host snapshot still requires Finnhub access for its separate audit archive. Offline
+mock agents continue to use archived live-agent materials without network access.
 Allow outbound HTTPS to `query1.finance.yahoo.com` and `finnhub.io`; Finnhub plan
 coverage and Yahoo availability/rate limits remain external requirements.
 
 The baseline is a no-change reference, **not** an official/expert forecast. This is an
 intentional departure from the existing ERCOT target: no comparable official short-term
-AAPL price forecast is available. The maintainer should review that choice.
+AAPL price forecast is available. The contributor selected this reference for the
+initial task; the PR should call out the departure from an expert baseline and the
+pipeline's current expert-category label.
 
 Known regular US equity holidays since 2024 and the 2025 Carter closure are handled.
 Unexpected missing sessions fail explicitly; new exceptional exchange closures need

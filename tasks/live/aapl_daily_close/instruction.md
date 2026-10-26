@@ -22,7 +22,10 @@ and quantile levels ${quantile_levels}. Submit before that cutoff. Use only info
 available before your submission and never after the cutoff. Daily OHLCV history must
 exclude the current, incomplete session. Finnhub company news is a suggested contextual
 source; summaries are not guaranteed full article bodies. No private API key is supplied
-inside the episode; use publicly accessible alternatives if needed.
+inside the episode. In live runs, you may use any publicly accessible news website,
+company investor-relations page, regulatory filing, or other relevant source; you are
+not restricted to Finnhub. Finnhub access is optional for the agent. Follow the replay
+environment restrictions below when running offline.
 
 ${environment_note}
 
