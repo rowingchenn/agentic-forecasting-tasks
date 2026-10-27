@@ -65,6 +65,9 @@ domains:
       - id: equities
         name: Equities and volatility
         examples: [S&P 500 index, VIX]
+      - id: bank-liquidity
+        name: Bank liquidity
+        examples: [Norges Bank structural liquidity, HKMA aggregate balance, ECB excess liquidity]
 
   - id: environment
     name: Environment
