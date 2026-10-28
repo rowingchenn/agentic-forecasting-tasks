@@ -21,12 +21,28 @@ params:
     file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
     `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
     "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
   # The forecast every run day asks for. setup/run.sh writes it into task.json for the
-  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it. The run
+  # comes before dawn: after the day before's last daytime hour is posted, and before ECCC's
+  # 06:00 forecast, which it is compared with. The run date's daytime hours start at 07:00.
   timezone: America/Toronto
-  cutoff: "22:00"
-  horizons: [1, 2]
+  cutoff: "05:50"
+  horizons: [0, 1]
   quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
 
 metadata:
   tags: [forecasting, live, environment]
@@ -42,8 +58,8 @@ extras:
     target: toronto_aqhi
     title: Toronto daytime AQHI
     question: >-
-      How high will Toronto's Air Quality Health Index get during the day tomorrow and the
-      day after?
+      How high will Toronto's Air Quality Health Index get during the day today and
+      tomorrow?
     taxonomy: environment/air-quality   # a leaf of taxonomy.yaml
     driver: weather                     # a facet of taxonomy.yaml
     domain: Air quality
@@ -69,9 +85,9 @@ extras:
         First published value: the hourly observations as posted in ECCC's realtime file the
         day after; ECCC's later backfill revisions are not used.
     schedule:
-      snapshot: "19:05"         # when a run day starts, in params.timezone
+      snapshot: "04:05"         # when a run day starts, in params.timezone
       every_days: 1             # a run day every day from first_run
-      first_run: "2026-10-28"
+      first_run: "2026-10-29"
     x:
       history_start: "2024-01-01"
       frequency: daily, with the hourly observations it is derived from
@@ -80,13 +96,24 @@ extras:
         - name: AQHI history
           columns: [target]
           what: >-
-            The target itself, every day up to the run date, whose daytime hours are
-            observed by the snapshot; the rare day with too few hours is filled in linearly
-            from its neighbours.
+            The target itself, every day up to the day before the run date; the rare day
+            with too few hours is filled in linearly from its neighbours.
           why: >-
             Air quality persists for a day or two with the weather pattern behind it, and
             the history carries the season's level.
           source: ECCC MSC Datamart
+          url: https://dd.weather.gc.ca/today/air_quality/aqhi/
+        - name: Earlier ECCC AQHI forecast
+          columns: [eccc]
+          what: >-
+            ECCC's forecast of each day's daytime maximum as a run could see it, normally
+            from the evening issue of the day before: for past days, its "Tomorrow" period;
+            for the forecast window, its "Tomorrow" and "Day 3" periods. The 06:00 forecast
+            the run is compared with comes out after the cutoff and is not included.
+          why: >-
+            ECCC's forecasters combine air quality models, smoke forecasts and the weather
+            pattern, which the history and local weather alone cannot see.
+          source: ECCC MSC Datamart, AQHI forecasts for Toronto (FEUZB)
           url: https://dd.weather.gc.ca/today/air_quality/aqhi/
         - name: Weather at the community
           columns: [tmax, precip, wind_u, wind_v, radiation]
@@ -107,6 +134,7 @@ extras:
           source: computed
       raw:
         - Hourly AQHI observations for the community (ECCC MSC Datamart)
+        - Every ECCC AQHI forecast issue for the community since history_start
         - Daily weather forecast at the community (ECMWF IFS via Open-Meteo)
     baseline:
       system: eccc-official
@@ -117,8 +145,7 @@ extras:
         name: ECCC MSC Datamart, AQHI forecasts for Toronto (FEUZB)
         url: https://dd.weather.gc.ca/today/air_quality/aqhi/
       method: >-
-        The AQHI forecast for the community that is current at the snapshot: the 17:00
-        issue of the run day or an amendment issued after it. Its "Tomorrow" period gives
-        the day after the run date and its "Day 3" period the day after that; each is
-        ECCC's forecast maximum for 06:00 to 18:00, a whole number, with 10+ counted as 11.
-        Amendments issued after the snapshot are not used.
+        ECCC's 06:00 AQHI forecast for the community on the run date, the first issue after
+        the cutoff, which the agents cannot see. Its "Today" period gives the run date and
+        its "Tomorrow" period the day after; each is ECCC's forecast maximum for 06:00 to
+        18:00, a whole number, with 10+ counted as 11. It is recorded the next day.

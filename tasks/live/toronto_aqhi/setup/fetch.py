@@ -8,7 +8,7 @@ results into archived files.
 
     snapshot(run_date, spec)  X_d: AQHI history and known covariates as published now
     truth(today, spec)        every completed day's daytime maximum as published now
-    baseline(run_date, spec)  ECCC's AQHI forecast for the community, current at the snapshot
+    baseline(run_date, spec)  ECCC's AQHI forecast, its first issue after the cutoff
 
 No credentials: Environment and Climate Change Canada's MSC Datamart and Open-Meteo are
 keyless. MSC asks that its directory listings not be polled, so only known file names are
@@ -49,6 +49,7 @@ DAILY = (
 )
 WEATHER_COLUMNS = ["tmax", "precip", "wind_u", "wind_v", "radiation"]
 OFFSET = {1: 0, 3: 1, 5: 2}  # daytime forecast period -> days after the issue's base day
+MORNING, EVENING = "06:00", "17:00"  # ECCC's scheduled forecast issues, local time
 
 _last_request = 0.0  # time.monotonic() of the last request
 
@@ -81,6 +82,13 @@ def _get_optional(url: str) -> bytes | None:
 
 def _now(timezone: str) -> datetime:
     return datetime.now(ZoneInfo(timezone))
+
+
+def _at(day: date, clock: str, timezone: str) -> datetime:
+    """`clock` ("HH:MM", local) on `day`, in UTC."""
+    hour, minute = map(int, clock.split(":"))
+    local = datetime(day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(timezone))
+    return local.astimezone(UTC)
 
 
 def _realtime_url(hour: datetime) -> str:
@@ -217,7 +225,10 @@ def snapshot(run_date: date, spec: dict) -> dict:
     future = index >= pd.Timestamp(run_date)
     weather.loc[future] = forecast.loc[future]
     target = target_history(aqhi, index).rename("target")
-    series = pd.concat([target, weather, pd.Series(index.dayofweek, index, name="dow")], axis=1)
+    forecasts = forecast_history(start, run_date, timezone)
+    eccc = eccc_as_seen(forecasts, index, run_date, spec).rename("eccc")
+    dow = pd.Series(index.dayofweek, index, name="dow")
+    series = pd.concat([target, eccc, weather, dow], axis=1)
     local_day = hourly.index.tz_convert(timezone).tz_localize(None).normalize()
     observed = hourly[local_day <= pd.Timestamp(last_observed)]
     return {
@@ -225,6 +236,7 @@ def snapshot(run_date: date, spec: dict) -> dict:
         "last_observed": last_observed,
         "raw": {
             "aqhi_hourly.csv": observed.rename("aqhi").rename_axis("utc_time").reset_index(),
+            "eccc_forecasts.csv": forecasts,
             "weather_forecast_daily.csv": forecast_daily.loc[pd.Timestamp(run_date) :]
             .rename_axis("date")
             .reset_index(),
@@ -232,6 +244,10 @@ def snapshot(run_date: date, spec: dict) -> dict:
         "sources": {
             "aqhi": {
                 "url": f"{DATAMART}/today/air_quality/aqhi/{ZONE}/observation/",
+                "community": COMMUNITY,
+            },
+            "eccc_forecast": {
+                "url": f"{DATAMART}/today/air_quality/aqhi/{ZONE}/forecast/",
                 "community": COMMUNITY,
             },
             "weather_past": {"url": "https://archive-api.open-meteo.com/v1/archive"},
@@ -242,6 +258,9 @@ def snapshot(run_date: date, spec: dict) -> dict:
             f"{FIRST_STAMP:02d}:00 to {LAST_STAMP:02d}:00 local time, the run date's once its "
             f"{LAST_STAMP:02d}:00 hour is posted; a day with fewer than {MIN_HOURS} observed "
             "hours is filled linearly from its neighbours",
+            "eccc": "ECCC's AQHI forecast of the day's daytime maximum, a whole number: from "
+            "the latest issue before that day's snapshot up to run_date, normally the evening "
+            "issue of the day before, and from the latest before this snapshot after it",
             "tmax": "daily maximum 2 m temperature (deg C)",
             "precip": "daily precipitation (mm)",
             "wind_u, wind_v": "eastward and northward components (km/h) of the day's maximum "
@@ -279,45 +298,95 @@ def parse_forecast_xml(raw: bytes) -> tuple[datetime, str, dict[int, float]]:
     return issued, root.get("status", ""), periods
 
 
-def current_forecast() -> bytes | None:
-    """ECCC's current forecast file for the community. Each UTC day's folder holds the last
-    issue of that day, so before the day's first issue it is in the previous day's folder."""
-    today = _now("UTC").date()
-    for day in (today, today - timedelta(days=1)):
-        raw = _get_optional(
-            f"{DATAMART}/{day:%Y%m%d}/WXO-DD/air_quality/aqhi/{ZONE}/forecast/realtime/xml/"
-            f"AQ_FCST_{COMMUNITY}_CURRENT.xml"
-        )
-        if raw is not None:
-            return raw
-    return None
+def forecast_url(issued: datetime) -> str:
+    """ECCC's file for the community's forecast issued at `issued` (UTC). It stays 30 days in
+    the folder of its UTC day."""
+    return (
+        f"{DATAMART}/{issued:%Y%m%d}/WXO-DD/air_quality/aqhi/{ZONE}/forecast/realtime/xml/"
+        f"AQ_FCST_{COMMUNITY}_{issued:%Y%m%d%H%M}.xml"
+    )
+
+
+def forecast_days(issued: datetime, periods: dict[int, float], timezone: str) -> dict:
+    """An issue's daytime periods by the day they cover. Issues come at 06:00 and 17:00; an
+    amendment before 06:00 amends the day before's."""
+    local = issued.astimezone(ZoneInfo(timezone))
+    base = local.date() - timedelta(days=1 if local.hour < 6 else 0)
+    return {base + timedelta(days=OFFSET[p]): v for p, v in periods.items() if p in OFFSET}
+
+
+def forecast_history(first_day: date, today: date, timezone: str) -> pd.DataFrame:
+    """Every ECCC forecast for the community from the month before first_day to yesterday
+    evening's issue, one row (issued, day, value) per daytime period. ECCC's monthly files
+    hold every issue up to last month; the evening issues of the last 30 days fill in the
+    months they lack."""
+    rows: list[tuple[pd.Timestamp, pd.Timestamp, float]] = []
+    months = pd.period_range(first_day - timedelta(days=1), today, freq="M")  # the evening before
+    missing = {months[-1]}
+    monthly = f"{DATAMART}/today/air_quality/aqhi/{ZONE}/forecast/monthly/csv"
+    for month in months[:-1]:
+        name = f"{month.strftime('%Y%m')}_MONTHLY_AQHI_{COMMUNITY}_SiteFcst.csv"
+        raw = _get_optional(f"{monthly}/{name}")
+        if raw is None:
+            missing.add(month)
+            continue
+        frame = pd.read_csv(io.BytesIO(raw), dtype=str, keep_default_na=False)
+        frame.columns = ["code", "name", "date", "time", "period", "value", "amended"]
+        issued = pd.to_datetime(frame["date"] + " " + frame["time"], utc=True)
+        values = pd.to_numeric(frame["value"].replace("10+", str(TEN_PLUS)), errors="coerce")
+        for when, period, value in zip(issued, frame["period"].astype(int), values, strict=True):
+            for day, v in forecast_days(when, {period: value}, timezone).items():
+                rows.append((when, pd.Timestamp(day), v))
+    for back in range(1, 31):
+        day = today - timedelta(days=back)
+        if pd.Period(day, freq="M") in missing:
+            raw = _get_optional(forecast_url(_at(day, EVENING, timezone)))
+            if raw is not None:
+                issued, _, periods = parse_forecast_xml(raw)
+                days = forecast_days(issued, periods, timezone)
+                rows += [(pd.Timestamp(issued), pd.Timestamp(d), v) for d, v in days.items()]
+    return pd.DataFrame(rows, columns=["issued", "day", "value"]).dropna()
+
+
+def eccc_as_seen(
+    history: pd.DataFrame, index: pd.DatetimeIndex, run_date: date, spec: dict
+) -> pd.Series:
+    """ECCC's forecast of each day on `index` as a run could see it: from the latest issue
+    before that day's snapshot, or the run date's for the days after it, normally the evening
+    issue of the day before. A past day no issue covered is filled in linearly."""
+    snapshot, timezone = spec["schedule"]["snapshot"], spec["schedule"]["timezone"]
+    as_of = pd.Series(
+        [_at(min(day.date(), run_date), snapshot, timezone) for day in index],
+        index=index,
+        name="as_of",
+    )
+    rows = history.merge(as_of, left_on="day", right_index=True)
+    rows = rows[rows["issued"] <= rows["as_of"]].sort_values("issued")
+    seen = rows.groupby("day")["value"].last().reindex(index)
+    past = index < pd.Timestamp(run_date)
+    seen[past] = seen[past].interpolate(limit_area="inside")
+    return seen
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """ECCC's forecast current at the snapshot: the daytime periods of its latest issue that
-    fall on the target dates. Empty if that issue came after the run day's cutoff (a fetch
-    made later than the snapshot) or if ECCC has posted none for two days."""
-    zone = ZoneInfo(spec["schedule"]["timezone"])
-    hour, minute = map(int, spec["schedule"]["cutoff"].split(":"))
-    cutoff = datetime(run_date.year, run_date.month, run_date.day, hour, minute, tzinfo=zone)
-    raw = current_forecast()
+    """ECCC's forecast the run is compared with: the run date's 06:00 issue, the first after
+    the cutoff, which the agents cannot see. Its "Today" and "Tomorrow" periods give the run
+    date and the day after. Empty until it is posted; ECCC keeps it for 30 days."""
+    timezone = spec["schedule"]["timezone"]
+    raw = _get_optional(forecast_url(_at(run_date, MORNING, timezone)))
     if raw is None:
-        source = {"report": f"no ECCC AQHI forecast for {COMMUNITY_NAME} ({COMMUNITY})"}
+        source = {"report": f"no 06:00 ECCC AQHI forecast for {COMMUNITY_NAME} ({COMMUNITY})"}
         return {"source": source | {"posted": None, "model": "ECCC"}, "forecasts": []}
     issued, status, periods = parse_forecast_xml(raw)
-    local = issued.astimezone(zone)
-    # issues come at 06:00 and 17:00; an amendment before 06:00 amends the day before's
-    base = local.date() - timedelta(days=1 if local.hour < 6 else 0)
-    days = {
-        (base + timedelta(days=OFFSET[p])).isoformat(): v for p, v in periods.items() if p in OFFSET
-    }
-    targets = [(run_date + timedelta(days=h)).isoformat() for h in spec["horizons"]]
-    forecasts = [{"target_date": t, "point": days[t]} for t in targets if t in days]
+    days = forecast_days(issued, periods, timezone)
+    targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
     return {
         "source": {
             "report": f"ECCC AQHI forecast for {COMMUNITY_NAME} ({COMMUNITY}), {status}",
             "posted": issued.isoformat(),
             "model": "ECCC",
         },
-        "forecasts": [] if issued > cutoff else forecasts,
+        "forecasts": [
+            {"target_date": t.isoformat(), "point": days[t]} for t in targets if t in days
+        ],
     }

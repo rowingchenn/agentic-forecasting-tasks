@@ -1,5 +1,5 @@
-Forecast the daytime maximum of Toronto's Air Quality Health Index (AQHI) for the next two
-days. You have about 90 minutes.
+Forecast the daytime maximum of Toronto's Air Quality Health Index (AQHI) for today and
+tomorrow. You have about 90 minutes.
 
 ## The target
 
@@ -21,6 +21,8 @@ ${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date)
 quantile levels ${quantile_levels}.
 
 ${environment_note}
+
+${history_note}
 
 ## Output
 
