@@ -1,0 +1,129 @@
+spec_type: core/v1
+name: norway-structural-liquidity-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: Europe/Oslo
+  cutoff: "16:00"
+  horizons: [1, 2, 3, 4, 7]   # Tuesday to Friday and the next Monday; weekends repeat Friday
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+metadata:
+  tags: [forecasting, live, markets]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: norway_structural_liquidity
+    title: Norway structural liquidity
+    question: >-
+      How much structural liquidity will Norway's banking system have from Tuesday to Friday
+      this week and on Monday next week?
+    taxonomy: markets/bank-liquidity   # a leaf of taxonomy.yaml
+    driver: economic                   # a facet of taxonomy.yaml
+    domain: Bank liquidity
+    region: Norway
+    unit: NOK million
+    tradable: false
+    summary: >-
+      The reserves Norwegian banks hold at Norges Bank, the central bank, leaving out Norges
+      Bank's own market operations. Norges Bank watches it to decide whether to add or drain
+      liquidity, and the money market reads it for how tight funding is. Tax deadlines and
+      government payments move it by tens of billions of kroner in a day; Norges Bank's
+      foreign exchange transactions for the government and government borrowing move it
+      too. Norges Bank's own forecast, its announcements and the tax and borrowing calendars
+      add information that history alone does not contain.
+    y:
+      definition: >-
+        Structural liquidity, series STAT_S of Norges Bank's dataflow LIQUIDITY_FORECAST:
+        banks' overnight deposits at Norges Bank (central bank reserves) excluding the effect
+        of Norges Bank's market operations, in NOK million, one value per calendar day.
+        Weekends and holidays repeat the previous business day's value, and the value can be
+        negative.
+      source:
+        name: Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series STAT_S)
+        url: https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/
+      settlement: >-
+        First published value: Norges Bank publishes the values up to the day before with its
+        liquidity forecast, normally every Monday and Thursday at 12:00 Oslo time; around
+        holidays a release can move or be skipped, and occasionally an extra one comes out.
+        The last one to four days of each year are never published and are not scored.
+    schedule:
+      snapshot: "13:05"         # when a run day starts, in params.timezone (an hour after
+                                # Norges Bank's Monday release at 12:00)
+      every_days: 7             # Mondays from first_run; the data normally come out on
+                                # Mondays and Thursdays
+      first_run: "2026-11-02"
+    x:
+      history_start: "2024-01-01"
+      frequency: daily
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Structural liquidity history
+          columns: [target]
+          what: >-
+            The target itself, every day up to the day before Norges Bank's latest release;
+            the last days of each year, which Norges Bank never publishes, are filled in
+            linearly.
+          why: >-
+            The level carries over from day to day between payments, and the history shows
+            how each kind of payment moved it in past months and years.
+          source: Norges Bank
+          url: https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/
+        - name: Payment calendar
+          columns:
+            [dow, business_day, tax_withholding, tax_corporate, tax_vat, tax_petroleum,
+             pensions, month_start]
+          what: >-
+            Day of week, Norwegian business days, and the government's regular payment days:
+            the deadlines for withholding tax and employer contributions, companies' advance
+            tax, VAT and petroleum tax, NAV's pension payments, and the first business day of
+            each month. A deadline off a business day moves to the next business day and a
+            payment by the government to the previous one, as Norges Bank describes.
+          why: >-
+            Taxes paid to the government drain reserves from the banks and government
+            payments add them back, on dates known in advance; most of the largest daily
+            moves fall on these days.
+          source: computed from Norges Bank's description of its liquidity forecast
+          url: https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/about-liquidity-forecast/
+      raw:
+        - Daily structural liquidity with the release it was taken from (Norges Bank)
+    baseline:
+      system: norges-bank-official
+      label: Norges Bank official
+      name: Norges Bank's structural liquidity forecast
+      kind: point
+      source:
+        name: Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series FCAST_S)
+        url: https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/
+      method: >-
+        Norges Bank's forecast of structural liquidity from its latest release dated on or
+        before the run date, normally the one published at 12:00 on the run date. A forecast
+        covers one calendar year, so target dates in the next year come from the latest
+        release of that year's forecast, which first appears in mid-December. Norges Bank
+        keeps every release, so reading the forecast again later gives the same numbers.
