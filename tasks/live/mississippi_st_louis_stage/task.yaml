@@ -21,12 +21,28 @@ params:
     file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
     `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
     "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
   # The forecast every run day asks for. setup/run.sh writes it into task.json for the
-  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it. The
+  # cutoff comes before the NWS evening forecast (about 19:00 to 22:00; 18:45 at the
+  # earliest from 2025-09 to 2026-10), which the run is compared with.
   timezone: America/Chicago
-  cutoff: "16:00"
+  cutoff: "18:40"
   horizons: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
 
 metadata:
   tags: [forecasting, live, environment]
@@ -68,10 +84,10 @@ extras:
         First published value: the mean of the readings as posted by the next day. USGS
         posts readings in near real time and may revise them later.
     schedule:
-      snapshot: "13:05"         # when a run day starts, in params.timezone (after the NWS
+      snapshot: "16:50"         # when a run day starts, in params.timezone (after the NWS
                                 # morning forecast, issued about 10:00 to 12:00)
       every_days: 1             # a run day every day from first_run
-      first_run: "2026-10-26"
+      first_run: "2026-10-29"
     x:
       history_start: "2024-01-01"
       frequency: daily, with the 30-minute readings it is derived from
@@ -87,6 +103,18 @@ extras:
             trend and the season's high and low water.
           source: USGS 07010000
           url: https://waterdata.usgs.gov/monitoring-location/USGS-07010000/
+        - name: Earlier NWS river forecast
+          columns: [nws]
+          what: >-
+            The NWS forecast of each day's mean stage as a run could see it: for past days,
+            the forecast issued before the previous day's run, one day ahead; for the
+            forecast window, the morning forecast of the run date. The forecast the run is
+            compared with comes out after the cutoff and is not included.
+          why: >-
+            The river forecast centre models flow from upstream gauges, reservoir releases and
+            expected rain, which the stage history alone cannot see.
+          source: NWS North Central River Forecast Center (HML), archived by the Iowa Environmental Mesonet
+          url: https://mesonet.agron.iastate.edu/request/hml.php
         - name: Precipitation over the basin
           columns: ["precip_<basin>"]
           what: >-
@@ -102,6 +130,7 @@ extras:
           url: https://open-meteo.com/en/docs/ecmwf-api
       raw:
         - 30-minute gauge height readings (USGS 07010000)
+        - Six-hourly values of the latest NWS river forecast before the snapshot
         - Hourly precipitation forecast per basin city (ECMWF IFS via Open-Meteo)
     baseline:
       system: nws-official
@@ -112,6 +141,6 @@ extras:
         name: NWS river forecast products (HML) for EADM7, archived by the Iowa Environmental Mesonet
         url: https://mesonet.agron.iastate.edu/request/hml.php
       method: >-
-        The latest river forecast the NWS issued for the gauge before the cutoff that covers
-        every target date, or else the latest that covers some of them; the mean of its
-        four six-hourly stage values on each date.
+        The first river forecast the NWS issues for the gauge after the cutoff, normally its
+        evening forecast of the run date, which the agents cannot see; the mean of its four
+        six-hourly stage values on each date. It is recorded the next day.

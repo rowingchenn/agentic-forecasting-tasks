@@ -8,7 +8,7 @@ results into archived files.
 
     snapshot(run_date, spec)  X_d: stage history and known covariates as published now
     truth(today, spec)        every completed day's mean stage as published now
-    baseline(run_date, spec)  the NWS river forecast, the latest complete one before the cutoff
+    baseline(run_date, spec)  the NWS river forecast, the first issue after the cutoff
 
 No credentials: the USGS Water Data API, the Iowa Environmental Mesonet's archive of NWS
 river forecasts and Open-Meteo are keyless. The NWS shows the same USGS readings for this
@@ -62,6 +62,14 @@ def _get(url: str, retries: int = 5) -> bytes:
 def _utc(day: date, timezone: str) -> datetime:
     """Local midnight at the start of `day`, in UTC."""
     return datetime(day.year, day.month, day.day, tzinfo=ZoneInfo(timezone)).astimezone(UTC)
+
+
+def _at(day: date, clock: str, timezone: str) -> datetime:
+    """`clock` ("HH:MM", local) on `day`, in UTC."""
+    hour, minute = map(int, clock.split(":"))
+    return datetime(
+        day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(timezone)
+    ).astimezone(UTC)
 
 
 def _iem(kind: str, start: datetime, end: datetime) -> pd.DataFrame:
@@ -173,26 +181,38 @@ def forecast_daily(rows: pd.DataFrame, timezone: str) -> pd.Series:
     return days.loc[days["size"] == 4, "mean"]
 
 
-def latest_forecast(
-    forecasts: pd.DataFrame, cutoff: datetime, targets: list[str], timezone: str
-) -> tuple[pd.Timestamp, pd.Series]:
-    """The last issuance before the cutoff whose daily means cover every target date or, if
-    none does, the last one that covers any, with its daily means."""
-    before = forecasts[forecasts["issued"] <= cutoff]
-    wanted = pd.DatetimeIndex(targets)
-    partial = None
-    for issued in sorted(before["issued"].unique(), reverse=True):
-        daily = forecast_daily(before[before["issued"] == issued], timezone)
-        covered = wanted.isin(daily.index)
-        if covered.all():
-            return pd.Timestamp(issued), daily
-        if partial is None and covered.any():
-            partial = pd.Timestamp(issued), daily
-    if partial is None:
-        raise LookupError(
-            f"no NWS forecast issued by {cutoff} covers {targets[0]} to {targets[-1]}"
-        )
-    return partial
+def issue_daily(forecasts: pd.DataFrame, timezone: str) -> pd.DataFrame:
+    """Each issuance's daily means: one row (issued, day, value) per day it covers in full."""
+    parts = [
+        forecast_daily(rows, timezone)
+        .rename("value")
+        .rename_axis("day")
+        .reset_index()
+        .assign(issued=issued)
+        for issued, rows in forecasts.groupby("issued")
+    ]
+    return pd.concat(parts, ignore_index=True)
+
+
+def nws_as_seen(
+    daily: pd.DataFrame, index: pd.DatetimeIndex, run_date: date, spec: dict
+) -> pd.Series:
+    """The NWS forecast of each day on `index` as a run could see it: from the latest issuance
+    before the snapshot of the day before, or of the run date for the days after it. So the
+    history holds the forecasts one day ahead, and the forecast window today's latest issue.
+    A past day no issuance covered is filled in linearly."""
+    snapshot, timezone = spec["schedule"]["snapshot"], spec["schedule"]["timezone"]
+    as_of = pd.Series(
+        [_at(min(day.date() - timedelta(days=1), run_date), snapshot, timezone) for day in index],
+        index=index,
+        name="as_of",
+    )
+    rows = daily.merge(as_of, left_on="day", right_index=True)
+    rows = rows[rows["issued"] <= rows["as_of"]].sort_values("issued")
+    seen = rows.groupby("day")["value"].last().reindex(index)
+    past = index < pd.Timestamp(run_date)
+    seen[past] = seen[past].interpolate(limit_area="inside")
+    return seen
 
 
 def precipitation_past(start: date, end: date, timezone: str) -> pd.DataFrame:
@@ -263,24 +283,33 @@ def snapshot(run_date: date, spec: dict) -> dict:
     rain = rain.combine_first(forecast)
     future = index >= pd.Timestamp(run_date)
     rain.loc[future] = forecast.loc[future]
-    series = pd.concat([target_history(stage, index).rename("target"), rain], axis=1)
+    # every issuance from the one before history_start's first run to now
+    forecasts = nws_forecasts(_utc(start - timedelta(days=3), timezone), datetime.now(UTC))
+    nws = nws_as_seen(issue_daily(forecasts, timezone), index, run_date, spec).rename("nws")
+    latest = forecasts[forecasts["issued"] == forecasts["issued"].max()]
+    series = pd.concat([target_history(stage, index).rename("target"), nws, rain], axis=1)
     return {
         "series": series.rename_axis("timestamp"),
         "last_observed": last_observed,
         "raw": {
             "stage_readings.csv": readings,
+            "nws_forecast_latest.csv": latest,
             "precipitation_forecast_hourly.csv": forecast_hourly[
                 forecast_hourly["time"] >= pd.Timestamp(run_date)
             ],
         },
         "sources": {
             "stage": {"url": USGS_API, "site": USGS_SITE, "parameter_code": "00065"},
+            "nws": {"url": IEM_HML, "station": GAUGE, "latest_issued": str(latest["issued"].max())},
             "precipitation_past": {"url": "https://archive-api.open-meteo.com/v1/archive"},
             "precipitation_forecast": forecast_source,
         },
         "covariate_notes": {
             "target": "daily mean stage (ft); a day with readings in fewer than "
             f"{MIN_HOURS} hours is filled linearly from its neighbours",
+            "nws": "NWS river forecast of the day's mean stage (ft), the mean of its four "
+            "six-hourly values: from the latest issuance before the previous day's snapshot "
+            "(one day ahead) up to run_date, from the latest before this snapshot after it",
             "precip_<basin>": "daily precipitation total (mm) at the basin's representative "
             "city; dates before run_date are ERA5 reanalysis, run_date onward is the "
             f"{WEATHER_MODEL} forecast issued before the snapshot",
@@ -297,17 +326,19 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """The NWS river forecast: the latest issued before the cutoff that covers every target
-    date (failing that, the latest that covers some), as the daily mean of its six-hourly
-    stages."""
+    """The NWS river forecast the run is compared with: the first issuance after the cutoff,
+    which the agents cannot see, as the daily mean of its six-hourly stages. Empty until it
+    is issued; IEM keeps every issuance, so a later call gives the same numbers."""
     timezone = spec["schedule"]["timezone"]
-    hour, minute = map(int, spec["schedule"]["cutoff"].split(":"))
-    cutoff = datetime(
-        run_date.year, run_date.month, run_date.day, hour, minute, tzinfo=ZoneInfo(timezone)
-    ).astimezone(UTC)
+    cutoff = _at(run_date, spec["schedule"]["cutoff"], timezone)
     targets = [(run_date + timedelta(days=h)).isoformat() for h in spec["horizons"]]
-    forecasts = nws_forecasts(cutoff - timedelta(days=2), cutoff)
-    issued, daily = latest_forecast(forecasts, cutoff, targets, timezone)
+    forecasts = nws_forecasts(cutoff, cutoff + timedelta(days=2))
+    forecasts = forecasts[forecasts["issued"] > cutoff]
+    if forecasts.empty:
+        source = {"report": f"no NWS river forecast for {GAUGE} issued yet after the cutoff"}
+        return {"source": source | {"posted": None, "model": RFC}, "forecasts": []}
+    issued = forecasts["issued"].min()
+    daily = forecast_daily(forecasts[forecasts["issued"] == issued], timezone)
     return {
         "source": {
             "report": f"NWS river forecast for {GAUGE} (HML), archived by IEM",
