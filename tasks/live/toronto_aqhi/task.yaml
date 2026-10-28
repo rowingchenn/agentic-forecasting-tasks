@@ -105,6 +105,7 @@ extras:
           url: https://dd.weather.gc.ca/today/air_quality/aqhi/
         - name: Earlier ECCC AQHI forecast
           columns: [eccc]
+          expert: true                  # the earlier expert forecast; only *-expert TSFMs get it
           what: >-
             ECCC's forecast of each day's daytime maximum as a run could see it, normally
             from the evening issue of the day before: for past days, its "Tomorrow" period;

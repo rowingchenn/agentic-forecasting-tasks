@@ -79,7 +79,9 @@ Schedule a run day so that its snapshot comes after the latest target value is p
 and its cutoff before both that version and any target value in the forecast window, as
 close to the version as the agents' 90 minutes allow. Earlier versions of the official
 forecast stay public. Where the publisher keeps them, give the TSFMs the latest one
-published before each snapshot as a covariate.
+published before each snapshot as a covariate. Published history that never changes may be
+cached on the host under `~/.cache/agentic-forecasting/<target>/`, as ERCOT's past forecast
+versions are.
 
 The pipeline writes the files (`series.csv`, `raw/`, `task.json`, `MANIFEST.json` with
 SHA-256 hashes) and refuses to build X_d for any day but today, so no value published

@@ -22,7 +22,7 @@ import time
 import urllib.parse
 import urllib.request
 from datetime import date, datetime, timedelta
-from functools import cache
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -46,6 +46,11 @@ ZONES = {
     "west": ("west", "Abilene", 32.45, -99.73),
 }
 WEATHER_COLUMNS = [f"t{stat}_{zone}" for zone in ZONES for stat in ("max", "min")]
+# Past versions of ERCOT's forecast, one per day, as they stood at that day's snapshot.
+CACHE = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "agentic-forecasting"
+VERSIONS = CACHE / "ercot_peak_load" / "official_versions.csv"
+VERSION_COLUMNS = ["version_day", "posted", "day", "peak"]
+ERCOT_PAUSE = 2.1  # ponytail: seconds between archive requests, under 30 a minute
 
 
 def _get(url: str, headers: dict[str, str] | None = None, retries: int = 4) -> object:
@@ -61,8 +66,19 @@ def _get(url: str, headers: dict[str, str] | None = None, retries: int = 4) -> o
     raise AssertionError("unreachable")
 
 
-@cache  # ponytail: one token per process; ID tokens last an hour, fine for daily jobs
+_token: tuple[float, str] | None = None  # (time.monotonic() when issued, ID token)
+
+
 def _ercot_token() -> str:
+    """An ID token for the ERCOT Public API. Tokens last an hour; this one is renewed after
+    50 minutes, for long jobs such as the first fill of the forecast cache."""
+    global _token
+    if _token is None or time.monotonic() - _token[0] > 3000:
+        _token = (time.monotonic(), _new_token())
+    return _token[1]
+
+
+def _new_token() -> str:
     body = urllib.parse.urlencode(
         {
             "username": os.environ["ERCOT_USERNAME"],
@@ -185,6 +201,77 @@ def calendar(index: pd.DatetimeIndex) -> pd.DataFrame:
     )
 
 
+def _snapshot_at(day: date, spec: dict) -> datetime:
+    """`day`'s snapshot in Central time, without a zone, as ERCOT's postedDatetime."""
+    hour, minute = map(int, spec["schedule"]["snapshot"].split(":"))
+    return datetime(day.year, day.month, day.day, hour, minute)
+
+
+def official_version(day: date, spec: dict) -> pd.DataFrame:
+    """ERCOT's in-use seven-day forecast as it stood at `day`'s snapshot (the latest version
+    posted in the six hours before it), one row (version_day, posted, day, peak) per delivery
+    date, with peak the daily maximum of its hourly system total (MW)."""
+    at = _snapshot_at(day, spec)
+    rows = _ercot(
+        FORECAST_REPORT,
+        postedDatetimeFrom=(at - timedelta(hours=6)).isoformat(),
+        postedDatetimeTo=at.isoformat(),
+        inUseFlag="true",
+    )
+    if not rows:
+        return pd.DataFrame(columns=VERSION_COLUMNS)
+    frame = pd.DataFrame(rows)
+    latest = frame[frame["postedDatetime"] == frame["postedDatetime"].max()]
+    peaks = latest.groupby("deliveryDate")["systemTotal"].max()
+    return pd.DataFrame(
+        {
+            "version_day": day.isoformat(),
+            "posted": latest["postedDatetime"].iloc[0],
+            "day": peaks.index,
+            "peak": peaks.round(2).to_numpy(),
+        }
+    )
+
+
+def official_versions(first_day: date, run_date: date, spec: dict) -> pd.DataFrame:
+    """official_version of every day from first_day to run_date. Past versions never change,
+    so each is fetched once and kept in VERSIONS; a day's is kept once its snapshot passed."""
+    cached = (
+        pd.read_csv(VERSIONS, dtype={"version_day": str, "posted": str, "day": str})
+        if VERSIONS.is_file()
+        else pd.DataFrame(columns=VERSION_COLUMNS)
+    )
+    have = set(cached["version_day"])
+    now = datetime.now(ZoneInfo(spec["schedule"]["timezone"])).replace(tzinfo=None)
+    parts = [cached]
+    for day in pd.date_range(first_day, run_date).date:
+        if day.isoformat() in have:
+            continue
+        version = official_version(day, spec)
+        parts.append(version)
+        if now >= _snapshot_at(day, spec) and not version.empty:
+            VERSIONS.parent.mkdir(parents=True, exist_ok=True)
+            version.to_csv(VERSIONS, mode="a", header=not VERSIONS.is_file(), index=False)
+        time.sleep(ERCOT_PAUSE)
+    return pd.concat([p for p in parts if not p.empty], ignore_index=True)
+
+
+def official_as_seen(versions: pd.DataFrame, index: pd.DatetimeIndex, run_date: date) -> pd.Series:
+    """ERCOT's forecast of each day's peak as a run could see it: from the version at the
+    snapshot of the day before, or of the run date for the days after it. So the history
+    holds one-day-ahead forecasts and the window the run date's version. A past day without
+    one is filled in linearly."""
+    peak = versions.set_index(["version_day", "day"])["peak"].to_dict()
+    keys = [
+        (min(t.date() - timedelta(days=1), run_date).isoformat(), t.date().isoformat())
+        for t in index
+    ]
+    seen = pd.Series([peak.get(key) for key in keys], index=index, dtype=float)
+    past = index < pd.Timestamp(run_date)
+    seen[past] = seen[past].interpolate(limit_area="inside")
+    return seen
+
+
 def snapshot(run_date: date, spec: dict) -> dict:
     """X_d as published right now: one row per day from history_start to the last target
     date, `target` empty after the last complete day, covariates known for the window."""
@@ -203,22 +290,34 @@ def snapshot(run_date: date, spec: dict) -> dict:
     weather = weather.combine_first(forecast)
     future = index >= pd.Timestamp(run_date)
     weather.loc[future] = forecast.loc[future]
-    series = pd.concat([peaks.rename("target").reindex(index), weather, calendar(index)], axis=1)
+    versions = official_versions(start - timedelta(days=1), run_date, spec)
+    official = official_as_seen(versions, index, run_date).rename("ercot_official")
+    latest = versions[versions["version_day"] == run_date.isoformat()]
+    target = peaks.rename("target").reindex(index)
+    series = pd.concat([target, official, weather, calendar(index)], axis=1)
     return {
         "series": series.rename_axis("timestamp"),
         "last_observed": last_observed,
         "raw": {
             "load_hourly.csv": hourly[hourly["operating_day"] <= last_observed.isoformat()],
+            "load_forecast_latest.csv": latest,
             "temperature_forecast_hourly.csv": forecast_hourly[
                 forecast_hourly["time"] >= pd.Timestamp(run_date)
             ],
         },
         "sources": {
             "load": {"url": f"{ERCOT_API}/{LOAD_REPORT}"},
+            "official": {
+                "url": f"{ERCOT_API}/{FORECAST_REPORT}",
+                "posted": latest["posted"].iloc[0] if len(latest) else None,
+            },
             "weather_past": {"url": "https://archive-api.open-meteo.com/v1/archive"},
             "weather_forecast": forecast_source,
         },
         "covariate_notes": {
+            "ercot_official": "ERCOT's in-use seven-day forecast of the day's peak (MW), the "
+            "latest version before a snapshot: the previous day's snapshot (one day ahead) up "
+            "to run_date, this snapshot after it",
             "tmax_<zone>, tmin_<zone>": "daily max/min 2 m temperature (deg C) at the zone's "
             "representative city; dates before run_date are ERA5 reanalysis, run_date onward "
             f"is the {WEATHER_MODEL} forecast issued before the snapshot",

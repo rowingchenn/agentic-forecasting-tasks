@@ -93,6 +93,20 @@ extras:
           why: Demand is persistent and seasonal; the history carries level, trend and weekly shape.
           source: ERCOT NP6-345-CD
           url: https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD
+        - name: Earlier ERCOT official forecast
+          columns: [ercot_official]
+          expert: true                  # the earlier expert forecast; only *-expert TSFMs get it
+          what: >-
+            ERCOT's seven-day forecast of each day's peak as a run could see it, the latest
+            version before a snapshot: for past days, the one before the previous day's run,
+            one day ahead; for the forecast window, the one before this run (normally 06:30).
+            The 09:30 version the run is compared with comes after the cutoff and is not
+            included.
+          why: >-
+            ERCOT's own models combine weather forecasts across the grid with what its operators
+            know about load, which the history and city temperatures alone cannot see.
+          source: ERCOT NP3-565-CD
+          url: https://www.ercot.com/mp/data-products/data-product-details?id=NP3-565-CD
         - name: Temperature in the eight weather zones
           columns: ["tmax_<zone>", "tmin_<zone>"]
           what: >-
@@ -111,6 +125,7 @@ extras:
           source: computed
       raw:
         - Hourly load by weather zone (ERCOT NP6-345-CD)
+        - Daily peaks of ERCOT's latest seven-day forecast before the snapshot (NP3-565-CD)
         - Hourly temperature forecast per zone city (ECMWF IFS via Open-Meteo)
     baseline:
       system: ercot-official

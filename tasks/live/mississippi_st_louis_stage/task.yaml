@@ -105,6 +105,7 @@ extras:
           url: https://waterdata.usgs.gov/monitoring-location/USGS-07010000/
         - name: Earlier NWS river forecast
           columns: [nws]
+          expert: true                  # the earlier expert forecast; only *-expert TSFMs get it
           what: >-
             The NWS forecast of each day's mean stage as a run could see it: for past days,
             the forecast issued before the previous day's run, one day ahead; for the
