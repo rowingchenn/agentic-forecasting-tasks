@@ -38,6 +38,7 @@ rejects unknown top-level fields, so the target lives in `params` and
 
 | Field | Meaning |
 |---|---|
+| `params.history_note`, variant `continual` | empty for a fresh agent; the `continual` variant asks an agent that continues its previous run day's sandbox and session to compare its earlier submissions with the published values and improve. `setup/run.sh` moves a previous day's output to `/home/user/history/<run date>/` |
 | `params.environment_note`, `params.materials_note` | the only instruction text that differs between the live Task and its mock replays (no data provided, what to save); the pipeline sets the mock versions: network cut, forecast from the archive as of the run date, nothing to save |
 | `params.timezone`, `params.cutoff` | submissions are due at `cutoff` local time on the run date |
 | `params.horizons` | target dates as days after the run date |

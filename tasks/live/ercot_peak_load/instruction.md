@@ -18,6 +18,8 @@ quantile levels ${quantile_levels}.
 
 ${environment_note}
 
+${history_note}
+
 ## Output
 
 Write `/home/user/output/forecast.json` in this form:

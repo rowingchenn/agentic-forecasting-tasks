@@ -21,12 +21,26 @@ params:
     file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
     `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
     "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
   # The forecast every run day asks for. setup/run.sh writes it into task.json for the
   # agent, verify/ checks submissions against it, and the pipeline schedules by it.
   timezone: America/Chicago
   cutoff: "10:00"
   horizons: [1, 2, 3, 4, 5, 6, 7]
   quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
 
 metadata:
   tags: [forecasting, live, energy]
