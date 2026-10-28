@@ -70,8 +70,16 @@ environment variables that the pipeline loads from its `.env`. It defines three 
   - `sources`: where each part came from; `covariate_notes`: what each column means.
 - `truth(today, spec)` returns a date-indexed `Series` of every value published so far.
 - `baseline(run_date, spec)` returns `{"source": {...}, "forecasts": [{"target_date":
-  ..., "point": ...}]}` (or `"quantiles"` instead of `"point"`) for the version published
-  before the cutoff.
+  ..., "point": ...}]}` (or `"quantiles"` instead of `"point"`) for the first version
+  published after the cutoff. The agents cannot see it, so they forecast from the same
+  information as the publisher. The pipeline calls it the day after the run day, so the
+  version must still be retrievable then; before it is published, `forecasts` is empty.
+
+Schedule a run day so that its snapshot comes after the latest target value is published,
+and its cutoff before both that version and any target value in the forecast window, as
+close to the version as the agents' 90 minutes allow. Earlier versions of the official
+forecast stay public. Where the publisher keeps them, give the TSFMs the latest one
+published before each snapshot as a covariate.
 
 The pipeline writes the files (`series.csv`, `raw/`, `task.json`, `MANIFEST.json` with
 SHA-256 hashes) and refuses to build X_d for any day but today, so no value published
@@ -112,7 +120,9 @@ Revise the taxonomy in the same pull request when a target fits no leaf.
 
 | Target | y | Run days | Horizons | Baseline B |
 |---|---|---|---|---|
-| `ercot_peak_load` | ERCOT daily system peak load (MW) | daily, cutoff 10:00 CT | 1–7 days | ERCOT seven-day load forecast |
+| `ercot_peak_load` | ERCOT daily system peak load (MW) | daily, cutoff 09:25 CT | 1–7 days | ERCOT seven-day load forecast |
+| `mississippi_st_louis_stage` | Mississippi River daily mean stage at St. Louis (ft) | daily, cutoff 18:40 CT | 1–13 days | NWS river forecast |
+| `toronto_aqhi` | Toronto daytime maximum AQHI | daily, cutoff 05:50 ET | 0–1 days | ECCC AQHI forecast |
 
 ## Adding a target
 

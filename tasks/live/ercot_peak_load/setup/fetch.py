@@ -8,7 +8,7 @@ results into archived files.
 
     snapshot(run_date, spec)  X_d: target history and known covariates as published now
     truth(today, spec)        every completed operating day's peak as published now
-    baseline(run_date, spec)  ERCOT's own forecast, the version in use at the cutoff
+    baseline(run_date, spec)  ERCOT's own forecast, the first version after the cutoff
 
 Credentials come from the environment: ERCOT_USERNAME, ERCOT_PASSWORD and
 ERCOT_SUBSCRIPTION_KEY (a free ERCOT Public API account).
@@ -235,27 +235,31 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """ERCOT's in-use seven-day forecast, latest version posted before the cutoff, as the
-    daily maximum of its hourly system total."""
+    """ERCOT's in-use seven-day forecast the run is compared with: the first version posted
+    after the cutoff, which the agents cannot see, as the daily maximum of its hourly system
+    total. Empty until it is posted; ERCOT keeps every version."""
     zone = ZoneInfo(spec["schedule"]["timezone"])
     hour, minute = map(int, spec["schedule"]["cutoff"].split(":"))
     cutoff = datetime(run_date.year, run_date.month, run_date.day, hour, minute, tzinfo=zone)
     local_cutoff = cutoff.replace(tzinfo=None)  # postedDatetime is Central time
     rows = _ercot(
         FORECAST_REPORT,
-        postedDatetimeFrom=(local_cutoff - timedelta(hours=6)).isoformat(),
-        postedDatetimeTo=local_cutoff.isoformat(),
+        postedDatetimeFrom=(local_cutoff + timedelta(minutes=1)).isoformat(),
+        postedDatetimeTo=(local_cutoff + timedelta(hours=6)).isoformat(),
         inUseFlag="true",
     )
+    if not rows:
+        source = {"report": FORECAST_REPORT, "posted": None, "model": None}
+        return {"source": source, "forecasts": []}
     frame = pd.DataFrame(rows)
-    latest = frame[frame["postedDatetime"] == frame["postedDatetime"].max()]
-    peaks = latest.groupby("deliveryDate")["systemTotal"].max()
+    first = frame[frame["postedDatetime"] == frame["postedDatetime"].min()]
+    peaks = first.groupby("deliveryDate")["systemTotal"].max()
     targets = [(run_date + timedelta(days=h)).isoformat() for h in spec["horizons"]]
     return {
         "source": {
             "report": FORECAST_REPORT,
-            "posted": latest["postedDatetime"].iloc[0],
-            "model": latest["model"].iloc[0],
+            "posted": first["postedDatetime"].iloc[0],
+            "model": first["model"].iloc[0],
         },
         "forecasts": [{"target_date": t, "point": round(float(peaks[t]), 2)} for t in targets],
     }

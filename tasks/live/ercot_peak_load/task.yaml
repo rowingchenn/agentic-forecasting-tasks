@@ -24,9 +24,11 @@ params:
   # Empty for a fresh agent; the continual variant below fills it.
   history_note: ""
   # The forecast every run day asks for. setup/run.sh writes it into task.json for the
-  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it. ERCOT
+  # posts its seven-day forecast every hour at :30; the cutoff comes just before the version
+  # the run is compared with.
   timezone: America/Chicago
-  cutoff: "10:00"
+  cutoff: "09:25"
   horizons: [1, 2, 3, 4, 5, 6, 7]
   quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
@@ -119,5 +121,6 @@ extras:
         name: ERCOT NP3-565-CD, Seven-Day Load Forecast by Model and Weather Zone
         url: https://www.ercot.com/mp/data-products/data-product-details?id=NP3-565-CD
       method: >-
-        The forecast model ERCOT flags as in use, latest version posted before the cutoff;
+        The forecast model ERCOT flags as in use, first version posted after the cutoff (the
+        09:30 version), which the agents cannot see; it is recorded the next day;
         the daily maximum of its hourly system total.
