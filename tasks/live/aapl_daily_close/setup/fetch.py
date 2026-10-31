@@ -1,6 +1,6 @@
-"""Host-side Yahoo prices and Finnhub news; stdlib + pandas only.
+"""Host-side Yahoo prices and no-change reference; stdlib + pandas only.
 
-FINNHUB_API_KEY is required only by snapshot(), never by truth() or baseline().
+No API key or other credential is required.
 Calls in the same process share a cached Yahoo response. Separate CLI commands
 refetch the completed-session history. The pipeline retains first-seen truth.
 No publisher scraping or credentials are exposed to the evaluated agent.
@@ -10,11 +10,11 @@ from __future__ import annotations
 
 import json
 import math
-import os
 import time
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from datetime import time as clock
 from functools import cache
+from pathlib import Path
 from typing import ClassVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -37,8 +37,6 @@ from pandas.tseries.holiday import (
 
 ZONE = ZoneInfo("America/New_York")
 YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/AAPL"
-FINNHUB = "https://finnhub.io/api/v1/company-news"
-NEWS_COLUMNS = ["id", "published_at_utc", "headline", "summary", "source", "url"]
 
 
 class ExchangeHolidays(AbstractHolidayCalendar):
@@ -184,64 +182,11 @@ def _guard(run_date, spec):
     return now
 
 
-def _news(run_date, as_of, lookback):
-    token = os.environ.get("FINNHUB_API_KEY", "").strip()
-    if not token:
-        raise RuntimeError(
-            "Set FINNHUB_API_KEY securely on the pipeline host for company-news access."
-        )
-    start = as_of - timedelta(days=lookback)
-    records = {}
-    # One query per UTC date mirrors the supplied extractor and limits truncation risk.
-    day = start.astimezone(timezone.utc).date()
-    end = as_of.astimezone(timezone.utc).date()
-    while day <= end:
-        query = urlencode(
-            {"symbol": "AAPL", "from": day.isoformat(), "to": day.isoformat()}
-        )
-        payload = _get(FINNHUB + "?" + query, {"X-Finnhub-Token": token})
-        if not isinstance(payload, list) or any(
-            not isinstance(a, dict) for a in payload
-        ):
-            raise RuntimeError(
-                "Finnhub returned an error or an invalid company-news response."
-            )
-        for article in payload:
-            try:
-                published = datetime.fromtimestamp(
-                    int(article["datetime"]), timezone.utc
-                )
-            except (KeyError, TypeError, ValueError, OverflowError, OSError):
-                raise RuntimeError(
-                    "Finnhub article has an invalid publication timestamp."
-                ) from None
-            if not start <= published <= as_of:
-                continue
-            record = {
-                "id": str(article.get("id", "")),
-                "published_at_utc": published.isoformat(),
-                **{key: str(article.get(key) or "") for key in NEWS_COLUMNS[2:]},
-            }
-            records[(record["id"], record["url"], record["published_at_utc"])] = record
-        day += timedelta(days=1)
-        if day <= end:
-            time.sleep(1.1)
-    return pd.DataFrame(
-        sorted(records.values(), key=lambda a: a["published_at_utc"]),
-        columns=NEWS_COLUMNS,
-    )
-
-
 def snapshot(run_date, spec):
     as_of = _guard(run_date, spec)
-    if not os.environ.get("FINNHUB_API_KEY", "").strip():
-        raise RuntimeError(
-            "Set FINNHUB_API_KEY securely on the pipeline host for company-news access."
-        )
     start = date.fromisoformat(spec["x"]["history_start"])
     through = run_date - timedelta(days=1)
     past = _daily(start, through)
-    news = _news(run_date, as_of, int(spec["x"]["news_lookback_days"]))
     _guard(run_date, spec)  # Do not archive a slow collection that crossed the cutoff.
     end = run_date + timedelta(days=max(spec["horizons"]))
     index = pd.date_range(start, end, name="timestamp")
@@ -253,18 +198,14 @@ def snapshot(run_date, spec):
     return {
         "series": series,
         "last_observed": through,
-        "raw": {"prices.csv": prices.reset_index(), "news.csv": news},
+        "raw": {"prices.csv": prices.reset_index()},
         "sources": {
             "prices": YAHOO,
-            "news": FINNHUB,
             "as_of": as_of.isoformat(),
-            "news_rows": len(news),
-            "news_coverage": "Provider response only; completeness is not guaranteed.",
         },
         "covariate_notes": {
             "dow": "Calendar weekday, Monday=0, known for all dates.",
             "month": "Calendar month, 1 through 12, known for all dates.",
-            "news": "Text in raw/news.csv; not consumed by the numeric TSFM interface.",
         },
     }
 
@@ -277,20 +218,77 @@ def truth(today, spec):
     )
 
 
-def baseline(run_date, spec):
-    as_of = _guard(run_date, spec)
-    past = _daily(
-        date.fromisoformat(spec["x"]["history_start"]), run_date - timedelta(days=1)
+def _snapshot_reference(run_date, spec):
+    """The daily pipeline collects B on the next day; use the frozen run-day X_d."""
+    x = (
+        Path(__file__).resolve().parents[3]
+        / "mock"
+        / spec["target"]
+        / run_date.isoformat()
+        / "oracle"
+        / "assets"
+        / "x"
     )
-    point = float(past.iloc[-1])
-    _guard(run_date, spec)
-    return {
-        "source": {
-            "name": "No-change reference; not an expert forecast",
+    if not x.exists():
+        return None
+    task = json.loads((x / "task.json").read_text())
+    manifest = json.loads((x / "MANIFEST.json").read_text())
+    observed = date.fromisoformat(task["last_observed"])
+    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
+    cutoff = datetime.combine(
+        run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE
+    )
+    if (
+        task["run_date"] != run_date.isoformat()
+        or observed >= run_date
+        or as_of.tzinfo is None
+        or as_of.astimezone(ZONE).date() != run_date
+        or as_of >= cutoff
+    ):
+        raise RuntimeError(
+            "Archived reference is not a valid pre-cutoff run-day snapshot."
+        )
+    series = pd.read_csv(x / "series.csv", index_col="timestamp", parse_dates=True)
+    point = float(series.loc[pd.Timestamp(observed), "target"])
+    if not math.isfinite(point) or point <= 0:
+        raise RuntimeError("Archived reference closing price is invalid.")
+    return (
+        point,
+        observed.isoformat(),
+        as_of.isoformat(),
+        f"{spec['target']}/{run_date}",
+    )
+
+
+def baseline(run_date, spec):
+    if run_date > _now().date():
+        raise RuntimeError("Cannot build a baseline for a future run day.")
+    saved = _snapshot_reference(run_date, spec)
+    if saved is not None:
+        point, last_observed, as_of, snapshot_path = saved
+        source = {
+            "name": "No-change reference",
+            "url": YAHOO,
+            "as_of": as_of,
+            "last_observed": last_observed,
+            "snapshot": snapshot_path,
+        }
+    else:
+        # A direct pre-cutoff check is allowed, but no historical reconstruction.
+        as_of = _guard(run_date, spec)
+        past = _daily(
+            date.fromisoformat(spec["x"]["history_start"]), run_date - timedelta(days=1)
+        )
+        point = float(past.iloc[-1])
+        _guard(run_date, spec)
+        source = {
+            "name": "No-change reference",
             "url": YAHOO,
             "as_of": as_of.isoformat(),
             "last_observed": past.index[-1].date().isoformat(),
-        },
+        }
+    return {
+        "source": source,
         "forecasts": [
             {"target_date": (run_date + timedelta(days=h)).isoformat(), "point": point}
             for h in spec["horizons"]
