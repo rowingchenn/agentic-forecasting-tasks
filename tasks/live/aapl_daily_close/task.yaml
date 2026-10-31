@@ -1,0 +1,121 @@
+spec_type: core/v1
+name: aapl-daily-close-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: America/New_York
+  cutoff: "09:25"
+  horizons: [1, 2, 3, 4, 7]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
+
+metadata:
+  tags: [forecasting, live, markets, equities]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: aapl_daily_close
+    title: AAPL daily closing price
+    question: >-
+      What will Apple stock close at on Tuesday through Friday and the following Monday?
+    taxonomy: markets/equities       # a leaf of taxonomy.yaml
+    driver: market                   # a facet of taxonomy.yaml
+    domain: Equity prices
+    region: United States (Nasdaq)
+    unit: USD per share
+    tradable: true
+    summary: >-
+      A tradable-price control: Apple daily closing prices, forecast weekly on Mondays
+      for Tuesday through Friday and the following Monday. Exchange holidays use the
+      latest prior session close.
+    y:
+      definition: >-
+        Yahoo Finance daily AAPL chart quote.close in USD, not adjclose and excluding
+        extended-hours quotes. Each target date uses the last regular-session close on
+        or before that date. Exchange holidays carry the prior close. Historical
+        quote.close can be revised for splits; no dividend adjustment is applied.
+      source:
+        name: Yahoo Finance AAPL daily chart
+        url: https://finance.yahoo.com/quote/AAPL/history/
+      settlement: >-
+        First value observed by the pipeline after the calendar day is complete
+        (America/New_York), permanently retained in the truth table. Not a guarantee
+        of first exchange publication; later Yahoo revisions do not overwrite truth.
+    schedule:
+      snapshot: "07:45"         # when a run day starts, in params.timezone
+      every_days: 7             # weekly on Mondays; no weekend forecast targets
+      # Proposed activation Monday; move forward if the PR merges on/after this date.
+      first_run: "2026-11-09"
+    x:
+      history_start: "2024-01-01"
+      frequency: daily calendar dates; non-trading days carry the prior close
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Closing price history
+          columns: [target]
+          what: >-
+            Yahoo quote.close through the last complete calendar day; non-trading
+            days carry the prior session close. Future target values are empty.
+          why: Recent prices establish the current level and historical variation.
+          source: Yahoo Finance daily chart
+          url: https://finance.yahoo.com/quote/AAPL/history/
+        - name: Calendar
+          columns: [dow, month]
+          what: Day of week (Monday=0) and calendar month, including target dates.
+          why: Describe weekly and seasonal timing without inventing future values.
+          source: computed
+      raw:
+        - Yahoo daily OHLCV (prices.csv), including adjusted close for audit only
+    baseline:
+      system: aapl-last-close
+      label: AAPL last close
+      name: No-change / random-walk reference
+      kind: point
+      source:
+        name: Yahoo Finance AAPL daily chart
+        url: https://finance.yahoo.com/quote/AAPL/history/
+      method: >-
+        The latest completed regular-session quote.close in the frozen run-day
+        snapshot, repeated for each target date. Baseline collection on the following
+        day reads that archived snapshot rather than later Yahoo history. A direct
+        pre-cutoff check may fetch completed bars if no snapshot exists; historical
+        reconstruction without an archive is refused.
