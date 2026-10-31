@@ -1,0 +1,140 @@
+spec_type: core/v1
+name: lax-daily-tmax-live
+image:
+  kind: container
+resources:
+  cpus: 4
+  memory_mb: 8192
+  sudo: false
+network:
+  mode: open
+timeouts:
+  setup: 300
+  agent: 5400
+  verify: 120
+artifacts:
+- /home/user/output
+params:
+  environment_note: 'You have unrestricted internet access. Apart from task.json, no data is provided:
+    find the information you need yourself, using any sources, tools, software, or models.'
+  materials_note: 'Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under
+    `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your
+    own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`,
+    one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained
+    it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.'
+  history_note: ''
+  timezone: America/Los_Angeles
+  cutoff: '10:00'
+  horizons:
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  quantile_levels:
+  - 0.1
+  - 0.2
+  - 0.3
+  - 0.4
+  - 0.5
+  - 0.6
+  - 0.7
+  - 0.8
+  - 0.9
+variants:
+- name: continual
+  params:
+    history_note: You may have forecast this target on earlier run days in this same environment and session;
+      if so, your earlier submissions are under `/home/user/history/<run date>/`. Compare them with the
+      values published since, and use what you learn to improve how you forecast.
+metadata:
+  tags:
+  - forecasting
+  - live
+  - environment
+  - weather
+  network_justification: Live forecasting measures how well the agent acquires its own information from
+    the open internet; restricting access would remove the capability being evaluated.
+extras:
+  agentic-forecasting:
+    target: lax_daily_tmax
+    title: LAX-area daily maximum temperature
+    question: What will the maximum 2-metre air temperature near LAX be on each of the next seven days?
+    taxonomy: environment/weather
+    driver: weather
+    domain: Daily temperature
+    region: Los Angeles, California (LAX-area coordinates)
+    unit: K
+    tradable: false
+    summary: A seven-day temperature forecast at fixed LAX-area coordinates. Ground truth is the Open-Meteo
+      ERA5 reanalysis daily maximum, not an airport station measurement. ECMWF IFS 0.25-degree forecasts
+      served by Open-Meteo are the operational model baseline.
+    y:
+      definition: Open-Meteo archive temperature_2m_max for latitude 33.94, longitude -118.40, ERA5 (models=era5),
+        elevation=38 metres, cell_selection=land, timezone=America/Los_Angeles. The provider computes
+        daily local-calendar maxima of its 2-metre temperature series. Convert Celsius to Kelvin by adding
+        273.15. This is a gridded, elevation-adjusted reanalysis target, not NOAA GHCND or LAX station
+        observations.
+      source:
+        name: Open-Meteo Historical Weather API, pinned ERA5 reanalysis
+        url: https://open-meteo.com/en/docs/historical-weather-api
+      settlement: First finite ERA5 value observed by the pipeline after a six-calendar-day publication
+        buffer. Later reanalysis revisions do not replace previously settled truth. This is first-observed
+        archive data, not guaranteed first publication. Missing recent dates remain unresolved; no forecast
+        substitutes for truth.
+    schedule:
+      snapshot: 07:30
+      every_days: 1
+      first_run: '2026-10-29'
+    x:
+      history_start: '2024-01-01'
+      frequency: daily local calendar dates
+      given_to: TSFMs only; live agents find their own information
+      latitude: 33.94
+      longitude: -118.4
+      elevation: 38
+      cell_selection: land
+      variable: temperature_2m_max
+      history_model: era5
+      forecast_model: ecmwf_ifs025
+      archive_delay_days: 6
+      groups:
+      - name: Temperature history
+        columns:
+        - target
+        what: Finite ERA5 daily maxima in Kelvin from history_start through the latest available date
+          no later than run_date minus six days. More recent target values remain empty.
+        why: Carries the seasonal temperature cycle, local climate and recent weather conditions without
+          using future observations.
+        source: Open-Meteo ERA5
+        url: https://open-meteo.com/en/docs/historical-weather-api
+      - name: Calendar
+        columns:
+        - dow
+        - doy_sin
+        - doy_cos
+        what: Weekday and annual-cycle sine/cosine features, known for every history and forecast date.
+        why: Represent calendar timing and the smooth annual temperature cycle without substituting forecasts
+          into missing truth.
+        source: computed
+      raw:
+      - Historical daily Celsius and Kelvin temperatures with unfilled missing values
+      - Complete historical API response and request metadata
+      - Complete baseline API response and request metadata
+    baseline:
+      system: lax-ecmwf-ifs025
+      label: ECMWF IFS 0.25° via Open-Meteo
+      name: Pinned ECMWF IFS 0.25-degree operational temperature forecast
+      kind: point
+      source:
+        name: ECMWF IFS 0.25° served by Open-Meteo
+        url: https://open-meteo.com/en/docs/ecmwf-api
+      method: Request models=ecmwf_ifs025 at the same coordinates, requested elevation, cell-selection
+        policy and timezone; use temperature_2m_max for run_date+1 through run_date+7, converted to Kelvin.
+        Different native model grids are not identical observation points. Archive the complete response
+        and retrieval timestamp before the cutoff. Open-Meteo does not supply a forecast-cycle issue timestamp
+        here, so retrieval time is not described as model issue time. No automatic best-match model selection
+        or late reconstruction is allowed.
