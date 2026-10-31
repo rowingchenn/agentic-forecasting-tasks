@@ -1,0 +1,142 @@
+spec_type: core/v1
+name: tsa-checkpoint-throughput-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it. The run
+  # comes after TSA's weekday posting (by 9 a.m.) and Kalshi's settlement of it, and leaves
+  # the agents their 90 minutes before the cutoff, when the day's market is read for the
+  # baseline.
+  timezone: America/New_York
+  cutoff: "13:00"
+  horizons: [0]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
+
+metadata:
+  tags: [forecasting, live, mobility]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: tsa_checkpoint_throughput
+    title: TSA checkpoint throughput
+    question: >-
+      How many people will pass through US TSA airport security checkpoints today?
+    taxonomy: mobility/air-travel       # a leaf of taxonomy.yaml
+    driver: behavioral                  # a facet of taxonomy.yaml
+    domain: Air travel
+    region: United States
+    unit: passengers
+    tradable: false
+    summary: >-
+      The number of people the Transportation Security Administration (TSA) screens at
+      airport security checkpoints across the United States in one day, as TSA first
+      publishes it. Travel follows the day of the week, the season and the holidays; airline
+      schedules, weather disruptions and news add information that history alone does not
+      contain. Kalshi runs a market on each day's number, which gives the baseline.
+    y:
+      definition: >-
+        TSA's checkpoint travel number for a calendar day: the number of travelers screened
+        at TSA security checkpoints nationwide on that day, in whole passengers, as published
+        on TSA's Passenger Volumes page.
+      source:
+        name: TSA checkpoint travel numbers (Passenger Volumes)
+        url: https://www.tsa.gov/travel/passenger-volumes
+      settlement: >-
+        First published value: the number TSA first posts for the day; later revisions are
+        not used. TSA posts Monday to Friday by 9 a.m., so Friday to Sunday appear on Monday,
+        and holiday weeks may be later. From 2026-10-09 the pipeline reads it from the
+        settlement of Kalshi's KXTSAD market for the day, whose rules settle on TSA's first
+        published number; before that, from TSA's pages as retrieved once, where archived
+        years carry TSA's year-end revisions.
+    schedule:
+      snapshot: "11:15"         # when a run day starts, in params.timezone
+      every_days: 1             # a run day every day from first_run
+      first_run: "2026-11-01"
+    x:
+      history_start: "2024-01-01"
+      frequency: daily
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: TSA throughput history
+          columns: [target]
+          what: >-
+            The target itself, every day up to the last one known before the run. TSA posts
+            a Monday-to-Thursday number the next morning and Friday to Sunday on Monday, and
+            Kalshi settles them within about an hour, so on weekends X ends on Thursday. A day
+            missing between two published days is filled in linearly from its neighbours.
+          why: >-
+            Air travel repeats weekly and yearly, and the last weeks carry the season's
+            level.
+          source: TSA Passenger Volumes; Kalshi KXTSAD settlements from 2026-10-09
+          url: https://www.tsa.gov/travel/passenger-volumes
+        - name: Travel calendar
+          columns: [dow, federal_holiday, thanksgiving_window, winter_holidays, day_of_year]
+          what: >-
+            Day of week (Monday = 0); US federal holidays, on their observed dates; the days
+            from the Wednesday before Thanksgiving through the Monday after; December 20 to
+            January 4; and the day of the year.
+          why: >-
+            Travel peaks and dips around holidays whose dates and weekdays move every year,
+            which a weekly or yearly lag alone cannot place.
+          source: computed
+      raw:
+        - Daily TSA counts with the source of each value
+    baseline:
+      system: kalshi-tsa-daily
+      label: Kalshi daily TSA market
+      name: Modal 100,000-passenger bin of Kalshi's KXTSAD market at the cutoff
+      kind: point
+      max_quote_spread: 0.20
+      source:
+        name: Kalshi KXTSAD, daily TSA passenger screenings
+        url: https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXTSAD
+      method: >-
+        Kalshi's KXTSAD event for the run date lists 15 contracts "at least N passengers",
+        N from 1,800,000 to 3,200,000 in steps of 100,000; it opens on the morning of the
+        day, so only the run date has a market at the cutoff. Each contract's price at the cutoff
+        is the midpoint of its best bid and ask, used when both exist and are at most 0.20
+        apart. The prices are made non-increasing in N by pooling adjacent violators, and
+        their differences give each 100,000-passenger bin's probability. The point is the
+        middle of the most probable bin bounded on both sides, when it is more probable than
+        every other bin, either tail and any range between unquoted contracts; otherwise B
+        is empty for the day. It is recorded the next day from Kalshi's one-minute
+        candlesticks.
