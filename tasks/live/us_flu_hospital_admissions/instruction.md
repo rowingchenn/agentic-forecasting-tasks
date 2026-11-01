@@ -1,0 +1,57 @@
+Forecast how many people will be admitted to hospitals in the United States with
+laboratory-confirmed influenza in each of four weeks: the week that ends this Saturday and
+the three weeks after it. You have about 90 minutes.
+
+## The target
+
+Each target date is a Saturday, the last day of an MMWR epidemiological week (Sunday through
+Saturday). For each, the target is the number of new hospital admissions of patients with
+laboratory-confirmed influenza in the United States during that week, as hospitals report
+them to CDC's National Healthcare Safety Network (NHSN): the field `totalconfflunewadm` for
+jurisdiction `USA` in the preliminary release of NHSN's Weekly Hospital Respiratory Data
+(HRD) Metrics by Jurisdiction on data.cdc.gov (dataset `mpgq-jmmr`), in the row whose
+`weekendingdate` is the target date. A forecast is settled on the first value published for
+its week, normally in the release on the Wednesday after the week ends. NHSN revises a
+week's value after that, usually upward as late reports arrive; those revisions, and NHSN's
+official release on Fridays (dataset `ua7e-t2fy`), are not used. Single states, rates per
+100,000, and other surveillance systems such as FluSurv-NET or ILINet measure different
+quantities.
+
+## Inputs and environment
+
+`/home/user/input/task.json` gives the run date, the target dates (the run date plus
+${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
+quantile levels ${quantile_levels}.
+
+${environment_note}
+
+${history_note}
+
+## Output
+
+Write `/home/user/output/forecast.json` in this form:
+
+```text
+{
+  "run_date": "<run_date from task.json>",
+  "forecasts": [
+    {"target_date": "YYYY-MM-DD",
+     "quantiles": {"0.1": <admissions>, "0.2": <admissions>, "0.3": <admissions>,
+                   "0.4": <admissions>, "0.5": <admissions>, "0.6": <admissions>,
+                   "0.7": <admissions>, "0.8": <admissions>, "0.9": <admissions>}},
+    ...
+  ]
+}
+```
+
+- Include each date in `target_dates` exactly once.
+- `quantiles` uses exactly the levels in `quantile_levels`, written as shown ("0.1"
+  through "0.9"). Values are positive numbers of admissions in the week ending on the
+  target date and must not decrease as the level increases.
+
+Each forecast is scored after NHSN publishes the week's first value, with the continuous
+ranked probability score (CRPS) of its quantiles, so both the center and the spread matter.
+
+## Collected materials
+
+${materials_note}
