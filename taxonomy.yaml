@@ -79,6 +79,13 @@ domains:
         name: Natural hazards
         examples: [Wildfire burned area]
 
+  - id: space
+    name: Space
+    leaves:
+      - id: space-weather
+        name: Space weather
+        examples: [Planetary Kp index, solar wind speed]
+
   - id: mobility
     name: Transport and mobility
     leaves:
@@ -106,6 +113,7 @@ facets:
     economic: Economic conditions and policy
     behavioral: Human behavior and events
     market: Market expectations
+    solar: Solar activity
   tradable:
     "true": Tradable price (control)
     "false": Not tradable
