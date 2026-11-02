@@ -12,6 +12,16 @@ Filter to `Country = S92000003`, `DepartmentType = Type 1`, and
 hospital sites (`TreatmentLocation`). Do not add the overlapping `All` category,
 `New Planned` attendances, other department types or waiting-time percentages.
 
+Use this fixed panel of 30 hospital-site identifiers, all Type 1 departments:
+
+```text
+A111H A210H B120H C121H C313H C418H F704H G107H G405H G513H
+H103H H202H H212H L106H L302H L308H N101H N121H N411H R103H
+S308H S314H S319H T101H T202H V217H W107H Y144H Y146H Z102H
+```
+
+The identifiers define the target's coverage; no attendance data is supplied with them.
+
 This measures attendance episodes at the reporting Type 1 departments, not unique
 patients or all A&E activity. Source observations have a publication lag: week end
 is not release date. Weeks not yet released remain unknown, even if already completed.

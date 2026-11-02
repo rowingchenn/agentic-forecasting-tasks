@@ -63,8 +63,8 @@ def _get(url):
 
 def _weekly(today, spec):
     start = pd.Timestamp(spec["x"]["history_start"])
-    if start.dayofweek != 6 or start < pd.Timestamp("2023-01-01"):
-        raise ValueError("History must start on a Sunday in the clean 2023+ period.")
+    if start.dayofweek != 6 or start < pd.Timestamp("2024-01-07"):
+        raise ValueError("History must start on a Sunday from 2024-01-07 onward.")
     payload = json.loads(_get(CATALOGUE))
     if payload.get("success") is not True:
         raise ValueError("PHS catalogue request failed.")

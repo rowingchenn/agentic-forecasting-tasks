@@ -67,7 +67,7 @@ extras:
     summary: >-
       Weekly unplanned Type 1 emergency-department attendances in Public Health Scotland's
       reporting panel. This is all-cause service use, not a respiratory-disease subset,
-      unique patients or every type of A&E service. History starts in 2023 to use a recent,
+      unique patients or every type of A&E service. History starts in January 2024 to use a recent,
       consistent reporting panel rather than interpolate pandemic or older source anomalies.
     y:
       definition: >-
@@ -91,7 +91,7 @@ extras:
       every_days: 7             # Mondays
       first_run: "2026-11-09"   # advance to a later Monday if enabled later
     x:
-      history_start: "2023-01-01" # Sunday; clean recent panel and annual baseline anchors
+      history_start: "2024-01-07" # first full 2024 week: Monday Jan 1 through Sunday Jan 7
       frequency: weekly, weeks ending Sunday; no daily interpolation
       given_to: TSFMs only; agents find their own information
       groups:
