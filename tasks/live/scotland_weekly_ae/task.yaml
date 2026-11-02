@@ -1,0 +1,126 @@
+spec_type: core/v1
+name: scotland-weekly-ae-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: Europe/London
+  cutoff: "18:45"
+  horizons: [6, 13, 20, 27]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
+
+metadata:
+  tags: [forecasting, live, health]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: scotland_weekly_ae
+    title: Scotland weekly unplanned emergency-department attendances
+    question: >-
+      How many unplanned attendances will Scotland's reporting Type 1 emergency departments
+      record in each of the next four Sunday-ending weeks?
+    taxonomy: health/health-care-use
+    driver: behavioral
+    domain: General health-care use
+    region: Scotland, reporting Type 1 emergency departments
+    unit: attendance episodes/week
+    tradable: false
+    summary: >-
+      Weekly unplanned Type 1 emergency-department attendances in Public Health Scotland's
+      reporting panel. This is all-cause service use, not a respiratory-disease subset,
+      unique patients or every type of A&E service. History starts in 2023 to use a recent,
+      consistent reporting panel rather than interpolate pandemic or older source anomalies.
+    y:
+      definition: >-
+        For each Sunday WeekEndingDate, sum NumberOfAttendancesEpisode with Country
+        S92000003, DepartmentType Type 1 and AttendanceCategory Unplanned across distinct
+        TreatmentLocation sites in the Public Health Scotland weekly activity CSV. Do not
+        add All or New Planned rows, percentages or other departments to the count.
+      source:
+        name: Public Health Scotland, Weekly A&E Activity and Waiting Times
+        url: https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times
+      settlement: >-
+        First eligible published weekly total observed and retained by the pipeline after
+        the week ends. Later revisions do not overwrite settled counts; this is not a claim
+        to capture the publisher's first version. Use the source release as available at
+        collection. Duplicate site-week keys, missing counts, missing weeks or changes to
+        the fixed 30-site panel cause failure pending review, not invented values. Weekly
+        totals are never divided into or repeated as daily observations. Source: Public
+        Health Scotland; sums and forecasts are derived; UK Open Government Licence.
+    schedule:
+      snapshot: "17:05"         # Europe/London; 100 minutes before cutoff
+      every_days: 7             # Mondays
+      first_run: "2026-11-09"   # advance to a later Monday if enabled later
+    x:
+      history_start: "2023-01-01" # Sunday; clean recent panel and annual baseline anchors
+      frequency: weekly, weeks ending Sunday; no daily interpolation
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Weekly attendance history
+          columns: [target]
+          what: >-
+            Weekly totals through the latest released Sunday as retrieved before cutoff,
+            with the publication lag retained and no fabricated intervening weeks.
+          why: Recent activity and earlier years carry level, trend and annual seasonality.
+          source: Public Health Scotland weekly A&E open data (UK OGL)
+          url: https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times
+        - name: Calendar
+          columns: [iso_week, month]
+          what: ISO week number and month of each Sunday-ending week, including future weeks.
+          why: Annual calendar position can explain seasonal changes in attendance.
+          source: computed
+      raw:
+        - Filtered hospital-week unplanned Type 1 attendance rows used to construct totals
+    baseline:
+      system: scotland-ae-seasonal-52
+      label: 52-week seasonal naive (statistical)
+      name: Annual seasonal reference, not an official or expert health-care forecast
+      kind: point
+      source:
+        name: Frozen run-day PHS weekly attendance history
+        url: https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times
+      method: >-
+        Each target Sunday's total from exactly 52 weeks (364 days) earlier in frozen X_d.
+        This is a 52-week lag, not an ISO week-number match in 53-week years. Next-day
+        collection uses hash-checked pre-cutoff X_d, never later source revisions. The
+        statistical baseline is proposed as an exception to the official/expert guideline,
+        subject to maintainer acceptance.
