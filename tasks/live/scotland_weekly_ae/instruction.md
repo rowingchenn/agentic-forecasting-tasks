@@ -1,6 +1,6 @@
-Forecast Scotland's weekly unplanned Type 1 emergency-department attendances for the
-four Sunday dates in task.json. Runs are on Mondays; each target date labels a whole
-Monday-through-Sunday week, not attendance on that Sunday alone. You have about 90 minutes.
+Forecast Scotland's unplanned Type 1 emergency-department attendances for the single
+Sunday date in task.json. Each Monday run forecasts one total for that Monday-through-
+Sunday week, not attendance on Sunday alone. You have about 90 minutes.
 
 ## The target
 
