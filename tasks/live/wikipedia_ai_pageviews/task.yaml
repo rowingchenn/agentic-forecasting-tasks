@@ -1,0 +1,122 @@
+spec_type: core/v1
+name: wikipedia-ai-pageviews-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: UTC
+  cutoff: "13:45"
+  horizons: [1, 2, 3, 4, 5, 6, 7]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
+
+metadata:
+  tags: [forecasting, live, attention]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: wikipedia_ai_pageviews
+    title: Wikipedia Artificial intelligence daily page views
+    question: >-
+      How many user-classified views will English Wikipedia's Artificial intelligence
+      article receive on each of the next seven UTC days?
+    taxonomy: attention/search-and-page-views
+    driver: behavioral
+    domain: Online attention
+    region: English Wikipedia, worldwide
+    unit: views/day
+    tradable: false
+    summary: >-
+      Daily views of the fixed Artificial_intelligence article on English Wikipedia,
+      across all access methods, with Wikimedia's user agent classification. News,
+      product announcements and public events can change attention to the topic.
+    y:
+      definition: >-
+        The integer views field for project en.wikipedia.org, access all-access,
+        agent user, article Artificial_intelligence, granularity daily, for the UTC date.
+        These are page-view events classified as user traffic, not unique visitors,
+        searches, all-agent traffic or the sum of translated articles or redirects.
+      source:
+        name: Wikimedia Analytics API, per-article page views
+        url: https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/reference/page-views.html
+      settlement: >-
+        First value observed and retained by the pipeline once the date is at least two
+        calendar days before collection. Later source revisions do not overwrite it.
+        This is not a claim to capture Wikimedia's first published version. Missing
+        records are unavailable, not zero. The fixed title is not followed on rename.
+    schedule:
+      snapshot: "12:05"         # UTC; 100 minutes before the submission cutoff
+      every_days: 1
+      first_run: "2026-11-09"   # move forward if the task is enabled later
+    x:
+      history_start: "2024-01-01"
+      frequency: daily UTC; at least one full day of publication allowance
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Article view history
+          columns: [target]
+          what: >-
+            Daily user-classified views of the fixed English Wikipedia article, through
+            run_date minus two days, fetched and frozen at the run-day snapshot.
+          why: History carries the level and weekday pattern of attention to the article.
+          source: Wikimedia Analytics API
+          url: https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Artificial_intelligence/daily/
+        - name: Calendar
+          columns: [dow, month]
+          what: UTC weekday (Monday = 0) and month (1 through 12), including future dates.
+          why: Weekday and seasonal patterns can affect readership.
+          source: computed
+      raw:
+        - Daily page-view records for the exact project, access, agent and article filters
+    baseline:
+      system: wikipedia-ai-weekly-naive
+      label: Weekly seasonal naive (statistical)
+      name: Seven-day seasonal naive reference, not an official or expert forecast
+      kind: point
+      source:
+        name: Frozen run-day Wikimedia page-view history
+        url: https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Artificial_intelligence/daily/
+      method: >-
+        For each target date, subtract seven days repeatedly until the date is no later
+        than last_observed, and use that observed count from frozen X_d. The publication
+        allowance can require a 14-day lookback. Collection on the next day reads X_d,
+        never newly downloaded history. This statistical reference is proposed as an
+        exception to the official/expert baseline guideline, subject to maintainer review.
