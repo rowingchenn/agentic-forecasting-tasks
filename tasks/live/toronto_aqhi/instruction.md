@@ -22,8 +22,6 @@ quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 
-You may have forecast this target on earlier run days in this same environment and session; if so, your earlier submissions are under `/home/user/history/<run date>/`. Compare them with the values published since, and use what you learn to improve how you forecast.
-
 ## Output
 
 Write `/home/user/output/forecast.json` in this form:

@@ -54,12 +54,50 @@ tables last in the file.
 | `…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read |
 
 Write the schedule into `instruction.md` as well, in words; ALE no longer fills templates.
-Three paragraphs of the instruction are shared by every target and must stay verbatim,
+Two paragraphs of the instruction are shared by every target and must stay verbatim,
 because the pipeline swaps them for a replay (`af/mock.py`): the one on internet access
-("You have unrestricted internet access…"), the one on earlier run days ("You may have
-forecast this target on earlier run days…", which a fresh agent can ignore, since it has no
-`/home/user/history/`), and the one on collected materials ("Save copies of the external
-materials…"). Copy them from an existing target.
+("You have unrestricted internet access…") and the one on collected materials ("Save
+copies of the external materials…"). Copy them from an existing target. Do not write about
+earlier run days: for an agent that continues from its previous run day, the pipeline adds
+that paragraph after the one on internet access (`af continual-task`).
+
+### Choosing the schedule
+
+The website's [Methods](https://chennzi-agentic-forecasting.static.hf.space/#/methods?at=definition)
+page states the tuple and its timing rules formally. For an author they come down to these
+steps, in this order:
+
+1. **y.** A daily series that an authority publishes continuously, settled on its first
+   published value. Define it in `instruction.md` precisely enough for someone else to
+   recompute it: the report, the aggregation, the local day, and how many observations a
+   day needs to count.
+2. **B.** The public expert or official forecast of the same y, and the issue of it you
+   compare with: its first issue after the cutoff. Find when that issue has come out over
+   at least a year of history.
+3. **Cutoff (`AF_CUTOFF`).** A few minutes before the earliest release of that issue. The
+   NWS evening forecast for St. Louis came out at 18:45 at the earliest over 400 days, so
+   the cutoff is 18:40; ECCC issues its Toronto forecast at 06:00, so the cutoff is 05:50;
+   ERCOT posts a new version every hour, and the cutoff 09:25 makes the 09:30 version the
+   comparison. Agents then forecast from nearly the information B uses and never see it.
+4. **Start (`schedule.snapshot`).** Early enough before the cutoff for the agents' 90
+   minutes plus building and setting up the sandbox: 1 h 45 min to 2 h 20 min here.
+   The previous day's value must be published by then. If it is not, the target does not
+   qualify with this B.
+5. **Horizons (`AF_HORIZONS`).** The dates B forecasts, counted from the run date: 1–7 for
+   ERCOT's seven-day forecast, 1–13 for the NWS forecast, 0 and 1 for ECCC's Today and
+   Tomorrow. Use 0 only when the run day's target period starts after the cutoff
+   (Toronto's daytime maximum covers 07:00 to 18:00).
+6. **Quantiles (`AF_QUANTILE_LEVELS`).** 0.1 to 0.9, as every target uses, so that scores
+   compare across tasks.
+7. **Run days (`schedule.every_days`).** Daily; the maintainer sets `first_run` when
+   enabling the timer.
+8. **X.** The target history and the covariates you would give a forecaster, each as
+   published before the start. Include the latest issue of B before the start as a group
+   with `expert = true`.
+
+Without an expert forecast, steps 3 and 4 reduce to two conditions: start after the
+previous day's value is published, and cut off before any observation of the first target
+date.
 
 ### fetch.py
 
