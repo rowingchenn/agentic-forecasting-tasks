@@ -62,7 +62,7 @@ def _get(url: str, headers: dict[str, str] | None = None, retries: int = 4) -> o
         except OSError:
             if attempt == retries - 1:
                 raise
-            time.sleep(2**attempt)
+            time.sleep(30 * 2**attempt)  # outages last minutes
     raise AssertionError("unreachable")
 
 

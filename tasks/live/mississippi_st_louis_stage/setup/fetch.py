@@ -55,7 +55,8 @@ def _get(url: str, retries: int = 5) -> bytes:
         except OSError as exc:
             if attempt == retries - 1:
                 raise
-            time.sleep(RATE_LIMIT_PAUSE if getattr(exc, "code", None) == 429 else 2**attempt)
+            # outages last minutes
+            time.sleep(RATE_LIMIT_PAUSE if getattr(exc, "code", None) == 429 else 30 * 2**attempt)
     raise AssertionError("unreachable")
 
 

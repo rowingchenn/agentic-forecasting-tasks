@@ -66,7 +66,8 @@ def _get(url: str, retries: int = 5) -> bytes:
             code = getattr(exc, "code", None)
             if attempt == retries - 1 or code == 404:
                 raise
-            time.sleep(RATE_LIMIT_PAUSE if code == 429 else 2**attempt)
+            # outages last minutes
+            time.sleep(RATE_LIMIT_PAUSE if code == 429 else 30 * 2**attempt)
     raise AssertionError("unreachable")
 
 
