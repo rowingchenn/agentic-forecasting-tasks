@@ -1,26 +1,30 @@
-Forecast daily vehicle crossings at MTA bridges and tunnels for the seven dates in
-task.json. Each Monday run predicts Tuesday through the following Monday, one daily
-value per date. You have about 90 minutes.
+Forecast the number of vehicle crossings at MTA's bridges and tunnels in New York City on
+each of the seven days after the run date. You have about 90 minutes.
 
 ## The target
 
-For each date label in America/New_York, the target is the `count` field for `mode = BT`
-in MTA Daily Ridership and Traffic: Beginning 2020, dataset `sayj-mze2`:
-`https://data.ny.gov/d/sayj-mze2`. Use the date label as published. This is preliminary
-total traffic volume from toll collection systems at seven MTA bridges and two tunnels.
-It counts crossings, not unique vehicles or successful toll payments. Do not add the
-separate CBD/CRZ entry series or other transport modes, substitute an hourly dataset,
-or use the deprecated daily dataset.
+For each date, the target is the `count` of the row with `mode` BT for that date in MTA's
+dataset *MTA Daily Ridership and Traffic: Beginning 2020* on data.ny.gov (dataset
+`sayj-mze2`, `https://data.ny.gov/d/sayj-mze2`), under the date label as published
+(America/New_York). It is MTA's preliminary total traffic volume recorded by the toll
+collection systems at its seven bridges and two tunnels that day. It counts crossings, not
+unique vehicles or paid tolls. The separate CBD/CRZ entry series, other transport modes, the
+hourly datasets and the deprecated daily dataset measure different quantities.
 
-Publication can lag the crossing date. Unpublished dates and missing/null records are
-unknown, not zero and not a repeat of the previous count. Settlement retains the first
-completed-date value the pipeline observes; it is not guaranteed to capture MTA's first
-published version. Subsequent source revisions do not overwrite settled values.
+MTA posts the dataset each weekday at about 18:00 to 18:30 Eastern time, adding the previous
+day; Monday's posting adds Friday, Saturday and Sunday, and nothing is posted on weekends. A
+forecast is settled on the count as first posted by MTA; later reconciliation and
+restatements are not used. A date posted without a count is not settled; it is never taken
+as zero or as the previous day's count.
+
+Runs are on Mondays, after MTA's Monday posting. Forecasts are due by 20:50 Eastern time
+(America/New_York) on the run date, for the next seven dates, Tuesday through the following
+Monday.
 
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1, 2, 3, 4, 5, 6, 7] days), the submission cutoff (15:45 America/New_York on the run date), and the
+[1, 2, 3, 4, 5, 6, 7] days), the submission cutoff (20:50 America/New_York on the run date), and the
 quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
@@ -48,9 +52,8 @@ Write `/home/user/output/forecast.json` in this form:
   through "0.9"). Values are non-negative numbers of crossings and must not decrease as the level
   increases.
 
-Each forecast is scored after the MTA count is settled, with the continuous
-ranked probability score (CRPS) of its quantiles, so both the center and the spread
-matter.
+Each forecast is scored after MTA posts the count, with the continuous ranked probability
+score (CRPS) of its quantiles, so both the center and the spread matter.
 
 ## Collected materials
 

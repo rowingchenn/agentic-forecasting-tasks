@@ -1,15 +1,15 @@
-"""Host-only MTA BT daily counts and frozen 364-day reference; no API key.
+"""Host-only MTA BT daily counts and New York City weather; no API key.
 
-Source: Metropolitan Transportation Authority, sayj-mze2. These are preliminary
-crossing estimates, not unique vehicles or paid toll transactions. No gap filling.
+Sources: Metropolitan Transportation Authority, sayj-mze2 (preliminary crossing estimates,
+not unique vehicles or paid toll transactions; no gap filling), and Open-Meteo (ERA5
+reanalysis for past days, the ECMWF IFS forecast for the forecast window). No expert
+forecast of this series exists, so baseline() returns none.
 """
 from __future__ import annotations
-import hashlib
 import json
 import math
 import time
 from datetime import date, datetime, time as clock, timedelta
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -18,11 +18,15 @@ import pandas as pd
 from pandas.tseries.holiday import USFederalHolidayCalendar
 
 API = "https://data.ny.gov/resource/sayj-mze2.json"
-PAGE = "https://data.ny.gov/d/sayj-mze2"
 OVERVIEW = "https://data.ny.gov/api/views/sayj-mze2/files/7635e5d0-7534-406d-b1c4-be4969ce61df?download=true"
 ZONE = ZoneInfo("America/New_York")
 PAGE_SIZE = 1000
 MAX_LAG_DAYS = 7
+LAT, LON = 40.7128, -74.0060  # New York City, where the weather covariates are taken
+WEATHER_MODEL = "ecmwf_ifs025"
+DAILY = {"temperature_2m_max": "tmax", "precipitation_sum": "precip", "snowfall_sum": "snow"}
+ARCHIVE = "https://archive-api.open-meteo.com/v1/archive"
+FORECAST = "https://api.open-meteo.com/v1/forecast"
 
 
 def _now():
@@ -109,23 +113,59 @@ def _daily(start, end):
     return history, raw
 
 
+def _weather(url, params):
+    """Open-Meteo's daily block as tmax, precip, snow, indexed by local date."""
+    query = {"latitude": LAT, "longitude": LON, "daily": ",".join(DAILY),
+             "timezone": ZONE.key} | params
+    daily = _get(f"{url}?{urlencode(query)}")["daily"]
+    frame = pd.DataFrame({DAILY[k]: pd.Series(daily[k], dtype=float) for k in DAILY})
+    return frame.set_index(pd.DatetimeIndex(pd.to_datetime(daily["time"]), name="timestamp"))
+
+
+def weather(start, run_date, horizon):
+    """Reanalysis up to the day before run_date, the forecast published now from run_date on;
+    the forecast's past days fill any recent day the archive still lacks."""
+    forecast_params = {"models": WEATHER_MODEL, "past_days": 7, "forecast_days": horizon + 1}
+    forecast = _weather(FORECAST, forecast_params)
+    past = _weather(ARCHIVE, {"start_date": start, "end_date": run_date - timedelta(days=1)})
+    index = pd.date_range(start, run_date + timedelta(days=horizon), name="timestamp")
+    future = index >= pd.Timestamp(run_date)
+    frame = past.reindex(index).combine_first(forecast.reindex(index))
+    frame.loc[future] = forecast.reindex(index).loc[future]
+    return frame, forecast.loc[pd.Timestamp(run_date):], {"url": FORECAST, **forecast_params}
+
+
 def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
     start = date.fromisoformat(spec["x"]["history_start"])
+    horizon = max(spec["horizons"])
     history, raw = _daily(start, run_date - timedelta(days=1))
     last = history.index[-1].date()
     if last < run_date - timedelta(days=MAX_LAG_DAYS):
         raise RuntimeError("Latest BT count is over seven days old; review delayed publication.")
+    weather_daily, forecast_daily, forecast_source = weather(start, run_date, horizon)
     _guard(run_date, spec)
-    index = pd.date_range(start, run_date + timedelta(days=max(spec["horizons"])), name="timestamp")
+    index = pd.date_range(start, run_date + timedelta(days=horizon), name="timestamp")
     holidays = USFederalHolidayCalendar().holidays(index.min(), index.max())
-    return {"series": pd.DataFrame({"target": history.reindex(index), "dow": index.dayofweek,
-                                   "month": index.month, "holiday": index.isin(holidays).astype(int)}, index=index),
-            "last_observed": last, "raw": {"mta_bt_daily.csv": raw},
+    calendar = pd.DataFrame({"dow": index.dayofweek, "month": index.month,
+                             "holiday": index.isin(holidays).astype(int)}, index=index)
+    series = pd.concat([history.reindex(index), weather_daily, calendar], axis=1)
+    return {"series": series,
+            "last_observed": last,
+            "raw": {"mta_bt_daily.csv": raw,
+                    "weather_forecast_daily.csv": forecast_daily.rename_axis("date").reset_index()},
             "sources": {"traffic": {"name": "MTA", "url": API, "dataset": "sayj-mze2", "mode": "BT",
                                      "methodology": OVERVIEW, "data_use_note": "Overview states no limitations at this time; MTA/TBTA retain reserved rights."},
+                        "weather_past": {"url": ARCHIVE},
+                        "weather_forecast": forecast_source,
                         "as_of": as_of.isoformat()},
-            "covariate_notes": {"dow": "Monday=0.", "month": "Calendar month.",
+            "covariate_notes": {"tmax": "daily maximum 2 m temperature (deg C)",
+                                "precip": "daily precipitation (mm)",
+                                "snow": "daily snowfall (cm)",
+                                "weather": f"at {LAT}, {LON}, local days; dates before run_date are "
+                                f"ERA5 reanalysis, run_date onward the {WEATHER_MODEL} forecast "
+                                "published before the snapshot",
+                                "dow": "Monday=0.", "month": "Calendar month.",
                                 "holiday": "US federal holiday indicator, not a toll-facility closure indicator."}}
 
 
@@ -136,47 +176,7 @@ def truth(today: date, spec: dict) -> pd.Series:
     return _daily(date.fromisoformat(spec["x"]["history_start"]), today - timedelta(days=1))[0]
 
 
-def _reference(run_date, spec):
-    root = (Path(__file__).resolve().parents[3] / "mock" / spec["target"] / str(run_date)
-            / "oracle" / "assets" / "x")
-    if not root.exists():
-        result = snapshot(run_date, spec)  # direct same-day pre-cutoff smoke check only
-        return result["series"]["target"], result["last_observed"], result["sources"]["as_of"], None
-    manifest = json.loads((root / "MANIFEST.json").read_text())
-    for name in ("task.json", "series.csv"):
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != manifest["files"].get(name):
-            raise ValueError(f"Archived {name} fails its hash.")
-    task = json.loads((root / "task.json").read_text())
-    last = date.fromisoformat(task["last_observed"])
-    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
-    if (task["run_date"] != str(run_date) or task["task"] != spec["target"]
-            or manifest["snapshot"] != f"{spec['target']}/{run_date}"
-            or not run_date - timedelta(days=MAX_LAG_DAYS) <= last < run_date
-            or as_of.tzinfo is None or as_of.astimezone(ZONE).date() != run_date
-            or as_of >= _cutoff(run_date, spec)):
-        raise ValueError("Not a valid pre-cutoff run-day snapshot.")
-    history = pd.read_csv(root / "series.csv", index_col="timestamp", parse_dates=True)["target"]
-    return history, last, as_of.isoformat(), manifest["snapshot"]
-
-
 def baseline(run_date: date, spec: dict) -> dict:
-    if run_date > _now().date():
-        raise RuntimeError("Cannot build a future baseline.")
-    history, last, as_of, frozen = _reference(run_date, spec)
-    past = history.loc[:str(last)]
-    if not past.index.equals(pd.date_range(spec["x"]["history_start"], last)) or past.isna().any():
-        raise ValueError("Frozen daily history is incomplete.")
-    forecasts = []
-    for horizon in spec["horizons"]:
-        target = run_date + timedelta(days=horizon)
-        anchor = target - timedelta(days=364)
-        if anchor > last:
-            raise ValueError("Annual anchor is not observed.")
-        point = float(past.loc[pd.Timestamp(anchor)])
-        if not math.isfinite(point) or point < 0 or not point.is_integer():
-            raise ValueError("Invalid 364-day reference count.")
-        forecasts.append({"target_date": str(target), "point": point})
-    return {"source": {"name": "52-week seasonal naive (statistical, not expert)", "url": PAGE,
-                       "as_of": as_of, "snapshot": frozen, "last_observed": str(last),
-                       "lag_days": 364, "attribution": "MTA; derived forecast, no endorsement."},
-            "forecasts": forecasts}
+    """No public expert forecast of daily BT crossings exists; the engine scores against its
+    weekly seasonal naive instead."""
+    return {"source": {"report": "no expert forecast of daily MTA BT crossings"}, "forecasts": []}
