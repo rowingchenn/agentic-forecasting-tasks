@@ -1,0 +1,104 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/aapl-daily-close-live"
+keywords = ["forecasting", "live", "markets", "equities"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "09:25"
+AF_HORIZONS = "[1, 2, 3, 4, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "aapl_daily_close"
+title = "AAPL daily closing price"
+question = """\
+  What will Apple stock close at on Tuesday through Friday and the following Monday?"""
+taxonomy = "markets/equities"
+driver = "market"
+domain = "Equity prices"
+region = "United States (Nasdaq)"
+unit = "USD per share"
+tradable = true
+summary = """\
+  A tradable-price control: Apple daily closing prices, forecast weekly on Mondays for \
+  Tuesday through Friday and the following Monday. Exchange holidays use the latest \
+  prior session close."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Yahoo Finance daily AAPL chart quote.close in USD, not adjclose and excluding \
+  extended-hours quotes. Each target date uses the last regular-session close on or \
+  before that date. Exchange holidays carry the prior close. Historical quote.close can \
+  be revised for splits; no dividend adjustment is applied."""
+settlement = """\
+  First value observed by the pipeline after the calendar day is complete \
+  (America/New_York), permanently retained in the truth table. Not a guarantee of first \
+  exchange publication; later Yahoo revisions do not overwrite truth."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Yahoo Finance AAPL daily chart"
+url = "https://finance.yahoo.com/quote/AAPL/history/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "07:45"
+every_days = 7
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily calendar dates; non-trading days carry the prior close"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Yahoo daily OHLCV (prices.csv), including adjusted close for audit only"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Closing price history"
+columns = ["target"]
+what = """\
+  Yahoo quote.close through the last complete calendar day; non-trading days carry the \
+  prior session close. Future target values are empty."""
+why = "Recent prices establish the current level and historical variation."
+source = "Yahoo Finance daily chart"
+url = "https://finance.yahoo.com/quote/AAPL/history/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "month"]
+what = "Day of week (Monday=0) and calendar month, including target dates."
+why = "Describe weekly and seasonal timing without inventing future values."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "aapl-last-close"
+label = "AAPL last close"
+name = "No-change / random-walk reference"
+kind = "point"
+method = """\
+  The latest completed regular-session quote.close in the frozen run-day snapshot, \
+  repeated for each target date. Baseline collection on the following day reads that \
+  archived snapshot rather than later Yahoo history. A direct pre-cutoff check may fetch \
+  completed bars if no snapshot exists; historical reconstruction without an archive is \
+  refused."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Yahoo Finance AAPL daily chart"
+url = "https://finance.yahoo.com/quote/AAPL/history/"
