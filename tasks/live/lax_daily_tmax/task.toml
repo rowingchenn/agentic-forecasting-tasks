@@ -1,0 +1,132 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/lax-daily-tmax-live"
+keywords = ["forecasting", "live", "environment", "weather"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "UTC"
+AF_CUTOFF = "18:20"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "lax_daily_tmax"
+title = "Daily maximum temperature at Los Angeles airport"
+question = """\
+  What will the highest temperature at Los Angeles International Airport be on each of the \
+  next six days?"""
+taxonomy = "environment/weather"
+driver = "weather"
+domain = "Weather"
+region = "Los Angeles, California (LAX)"
+unit = "°F"
+tradable = false
+summary = """\
+  The day's highest temperature at Los Angeles International Airport, as the National \
+  Weather Service's daily climate report gives it. The airport is on the coast: sea breezes \
+  and the marine layer usually keep it mild, while offshore winds such as the Santa Ana \
+  bring some of its warmest days. Forecasts, weather models and forecast discussions carry \
+  information that the temperature history alone does not."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  The MAXIMUM under TEMPERATURE (F) in the NWS Daily Climate Report for Los Angeles \
+  International Airport (product CLILAX, NWS Los Angeles/Oxnard), in whole °F, for the \
+  climate day from midnight to midnight Pacific Standard Time (on standard time all year, \
+  so 1 a.m. to 1 a.m. PDT in summer)."""
+settlement = """\
+  First final report for the day that gives a maximum, normally issued within 3 hours after \
+  midnight PST (at the latest 4 h 49 min after it in 2024-2026); the preliminary report of \
+  about 5 p.m. and later corrections do not count. A day without one stays unresolved."""
+
+[metadata.agentic-forecasting.y.source]
+name = "NWS Daily Climate Report CLILAX, archived by the Iowa Environmental Mesonet"
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=CLILAX"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "16:35"
+every_days = 1
+first_run = "2026-11-05"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily, with the climate reports and forecast issues it is derived from"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Every final climate report's maximum, with its issue time (CLILAX)", "Daytime highs of the latest NWS Tabular State Forecast before the snapshot (SFTLOX)"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Temperature history"
+columns = ["target"]
+what = """\
+  The target itself, every day up to the day before the run date, from its first final \
+  climate report; the rare day without one is filled in linearly from its neighbours."""
+why = """\
+  Carries the seasonal cycle and the recent run of warm or cool days, which persist for a \
+  few days with the weather pattern."""
+source = "NWS Daily Climate Report CLILAX, archived by the Iowa Environmental Mesonet"
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=CLILAX"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier NWS forecast"
+columns = ["nws"]
+expert = true
+what = """\
+  The NWS forecast high (6 a.m. to 6 p.m.) for Los Angeles Intl Airport as a run could see \
+  it: for past days, from the latest Tabular State Forecast issued before the previous \
+  day's snapshot, one day ahead; for the forecast window, from the latest issued before \
+  this snapshot. The forecast the run is compared with comes out after the cutoff and is \
+  not included."""
+why = """\
+  Forecasters combine weather models with local knowledge of the marine layer and offshore \
+  winds, which the temperature history alone cannot see."""
+source = """\
+  NWS Los Angeles/Oxnard Tabular State Forecast (SFTLOX), archived by the Iowa \
+  Environmental Mesonet"""
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=SFTLOX"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "doy_sin", "doy_cos"]
+what = """\
+  Weekday and the sine and cosine of the day of the year, known for every history and \
+  forecast date."""
+why = "Represent the smooth annual temperature cycle."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "nws-official"
+label = "NWS official"
+name = "NWS Los Angeles/Oxnard forecast high for Los Angeles Intl Airport"
+kind = "point"
+visible_to_agents = false
+method = """\
+  The first Tabular State Forecast (SFTLOX) the NWS issues after the cutoff, normally the \
+  one of about 18:28 UTC, which the agents cannot see: its daytime high (6 a.m. to 6 p.m.) \
+  for Los Angeles Intl Airport on each target date. If no SFTLOX comes out within a day \
+  of the cutoff, the first Point Forecast Matrices (PFMLOX) after it, whose Max for Los \
+  Angeles Airport is the same forecast. It is recorded the next day."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = """\
+  NWS Tabular State Forecast SFTLOX (Point Forecast Matrices PFMLOX if it is missing), \
+  archived by the Iowa Environmental Mesonet"""
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=SFTLOX"
