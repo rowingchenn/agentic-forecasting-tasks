@@ -97,6 +97,7 @@ system = "boc-usd-cad-no-change"
 label = "No-change reference"
 name = "No change from the latest Bank of Canada rate at the cutoff"
 kind = "point"
+reference = true
 method = """\
   The run date's FXUSDCAD rate, published by 16:30 ET before the 19:00 cutoff (on a Bank \
   holiday, the latest rate before it), for every target date: the no-change reference \
