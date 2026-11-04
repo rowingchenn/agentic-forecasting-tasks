@@ -1,0 +1,173 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-initial-jobless-claims-live"
+keywords = ["forecasting", "live", "economy"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "10:45"
+AF_HORIZONS = "[2, 9, 16, 23]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_initial_jobless_claims"
+title = "US initial jobless claims"
+question = """\
+  How many seasonally adjusted initial claims for unemployment insurance will the US \
+  Department of Labor first report for this week and for each of the next three weeks?"""
+taxonomy = "economy/labor-market"
+driver = "economic"
+domain = "Labor market"
+region = "United States"
+unit = "claims per week"
+tradable = false
+summary = """\
+  The number of people who file a new claim for unemployment insurance in the United \
+  States in one week, seasonally adjusted, as the Department of Labor (DOL) first reports \
+  it each Thursday. Layoffs, plant shutdowns, storms and strikes move it from week to week, \
+  and how well the seasonal factors fit the holidays moves it further; state reports and \
+  news add information that history alone does not contain. It is compared with the \
+  consensus of economists' forecasts."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Seasonally adjusted initial claims for unemployment insurance in the United States in \
+  the week (Sunday to Saturday) ending on the target date: the advance figure in the \
+  sentence \"In the week ending [date], the advance figure for seasonally adjusted initial \
+  claims was [number]\" of DOL's Unemployment Insurance Weekly Claims news release, which \
+  DOL rounds to the nearest 1,000."""
+settlement = """\
+  First published value, normally in the release at 8:30 a.m. Eastern on the Thursday \
+  after the week ends, or on the Wednesday in a week when Thursday is a holiday or a \
+  federal office closure (19 of 608 releases from 2015 to 2026). DOL revises the figure a \
+  week later and revises its seasonal factors every year; those revisions are not used. \
+  The pipeline reads DOL's archived copy of the release, whose file is dated after 09:00 \
+  ET on 7 of the 50 releases from 2025-11 to 2026-10. When there is no copy yet it keeps \
+  the week's value from FRED's ICSA, which holds the same advance figure until the next \
+  release (its file was dated 08:34 ET on 2026-10-29). A week with no release, as in a \
+  lapse in appropriations, settles on FRED's value once DOL's releases have resumed and \
+  the week is three weeks old."""
+
+[metadata.agentic-forecasting.y.source]
+name = "US Department of Labor, Unemployment Insurance Weekly Claims news release"
+url = "https://oui.doleta.gov/unemploy/claims_arch.asp"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "09:00"
+every_days = 7
+first_run = "2026-11-12"
+
+[metadata.agentic-forecasting.x]
+history_start = "2023-04-01"
+frequency = "weekly, claims weeks dated on their Saturdays"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Each week's first print with the release it comes from", "DOL's weekly national table as published now: claims as revised, continued claims and seasonal factors", "The economists' consensus of each week published before the run"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Claims history"
+columns = ["target"]
+what = """\
+  The target itself, every week from the one ending 2023-04-01, the first under the \
+  seasonal adjustment DOL changed with its release of 2023-04-06, up to the latest week \
+  published before the start, normally in the release at 8:30 that morning. Each week is \
+  its first print, from DOL's release. FRED's ICSA stands in for the newest week when the \
+  archive's copy is late, with the same advance figure, and for the seven weeks of the \
+  2025 lapse in appropriations, with revised figures. A missing week is filled linearly."""
+why = """\
+  The level moves slowly and the weekly noise reverts, so the recent prints carry most of \
+  the signal. First prints differ from today's revised values by about 2,000 on average \
+  since 2024 and 8,000 from April to December 2023, but by 18,000 to 22,000 from 2022 to \
+  March 2023, so earlier years are left out."""
+source = "DOL's weekly news releases; FRED ICSA"
+url = "https://oui.doleta.gov/press/2026/102926.pdf"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Seasonal factors"
+columns = ["seasonal_factor"]
+what = """\
+  DOL's seasonal factor for initial claims in each week, in percent, which DOL publishes \
+  ahead of the weeks it applies to. The adjusted figure is the unadjusted count divided by \
+  this factor. A week DOL has not published one for yet carries the same week a year \
+  earlier."""
+why = """\
+  The factor changes by up to 36 points from one week to the next in 2026, around the \
+  holidays and the turn of the year. In the 36 weeks since 2023-04 with the largest change, \
+  the first print moved by 11,778 on average, against 8,671 in the other 143 weeks."""
+source = "DOL's weekly claims report"
+url = "https://oui.doleta.gov/unemploy/claims.asp"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["week", "holiday"]
+what = "ISO week number of the Saturday that ends the week, and the number of US federal holidays in the week."
+why = """\
+  Filings fall when state offices close and rise when seasonal layoffs fall in the same \
+  weeks each year, such as auto plant retooling in July and the end of the school year."""
+source = "computed"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier economists' consensus"
+columns = ["consensus"]
+expert = true
+what = """\
+  The economists' consensus as a run could see it. For past weeks, that week's own, in the \
+  last version before its release; a past week without one carries the week before's \
+  print. For the forecast window, the consensus for the newest published week, carried \
+  forward: the previous cycle's issue, since the consensus for the first target week \
+  appears after the cutoff. The numbers are kept on the host, so a morning without an \
+  answer from the source uses the last ones read; if none was ever read, X_d has no such \
+  column."""
+why = """\
+  Economists see state reports, layoff news and the seasonal patterns of each week, which \
+  the history alone does not contain. Over the 179 weeks from 2023-04 to 2026-10 its last \
+  version had a mean absolute error of 8,369, against 9,296 for the week before's print."""
+source = "Investing.com's chart data for US initial jobless claims"
+url = "https://www.investing.com/economic-calendar/initial-jobless-claims-294"
+
+[metadata.agentic-forecasting.baseline]
+system = "economists-consensus"
+label = "Economists' consensus"
+name = "Consensus of economists' forecasts of the week's first print"
+kind = "point"
+visible_to_agents = false
+method = """\
+  The consensus for the first target week, the week ending two days after the run date, as \
+  Nasdaq's economic calendar lists it, in the first version the pipeline sees after the \
+  cutoff. The pipeline asks every morning from the day after the run date until it has an \
+  answer and keeps the first. Later target weeks have no consensus, so they have no B. The \
+  agents should not be able to see it. Archived captures of Nasdaq's calendar show only \
+  the day of the capture or earlier, so the timing is read from two other calendars. On \
+  Trading Economics, whose own consensus differs from Nasdaq's last version by about 900 \
+  on average, no archived capture of 68 releases from 2025-01 to 2026-10 shows a consensus \
+  before the cutoff: the earliest is 13 hours after it, and on 26 releases the page still \
+  showed none 3.5 to 64 hours after the cutoff. Forex Factory carries Nasdaq's numbers \
+  (the same last version on 25 of 25 releases) and lists a week's events only from its \
+  Sunday; it had the number by Monday evening on all 26 archived, and from that first \
+  capture to the last version the number moved by 920 on average, and not at all on 14 of \
+  25. So B normally comes one to four days after the cutoff, when no new claims figure has \
+  been published. Nasdaq, Investing.com and Forex Factory give the same numbers, and where \
+  Nasdaq does not answer B comes from Investing.com, in the last version before the \
+  release."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Nasdaq economic calendar, Initial Jobless Claims"
+url = "https://www.nasdaq.com/market-activity/economic-calendar"
