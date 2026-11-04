@@ -1,0 +1,109 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/boc-usd-cad-live"
+keywords = ["forecasting", "live", "markets"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/Toronto"
+AF_CUTOFF = "19:00"
+AF_HORIZONS = "[1, 2, 3, 4, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "boc_usd_cad"
+title = "Bank of Canada USD/CAD daily average reference rate"
+question = """\
+  How many Canadian dollars will one US dollar be worth in the Bank of Canada's daily \
+  average reference series on Tuesday through Friday and the following Monday?"""
+taxonomy = "markets/currencies"
+driver = "market"
+domain = "Currency exchange rates"
+region = "Canada / United States"
+unit = "CAD per USD"
+tradable = true
+summary = """\
+  The Bank of Canada's daily average exchange rate for the US dollar, in Canadian dollars \
+  per US dollar: a trimmed mean of one-minute market quotes from 08:00 to 16:00 ET, \
+  published by 16:30 ET on Bank business days. USD/CAD is a liquid, tradable market whose \
+  current rate already reflects public information, so this target is a control: \
+  forecasts are compared with no change from the latest rate."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Bank of Canada series FXUSDCAD (Valet API), the daily average exchange rate in CAD per \
+  USD, four decimals: the mean of the one-minute indicative mid-market quotes from 08:00 \
+  to 16:00 ET without the highest and lowest 2.5%, published by 16:30 ET on days the \
+  Bank's Ottawa head office is open. On weekends and Bank holidays, when no rate is \
+  published, the value is the previous published rate."""
+settlement = """\
+  A forecast is settled on the first rate the Bank publishes for that date; on weekends \
+  and Bank holidays, the previous rate."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Bank of Canada, FXUSDCAD daily average exchange rate"
+url = "https://www.bankofcanada.ca/rates/exchange/daily-exchange-rates/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "17:05"
+every_days = 7
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily: business-day rates, with the previous rate on weekends and Bank holidays"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Published FXUSDCAD rates, from the last one before history_start"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "USD/CAD reference history"
+columns = ["target"]
+what = """\
+  The target itself, every day through the run date, whose rate is published by 16:30 \
+  ET; weekends and Bank holidays carry the previous rate."""
+why = "Exchange-rate history gives the current level and recent movement."
+source = "Bank of Canada Valet API"
+url = "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "publication_day"]
+what = "Weekday (Monday = 0) and scheduled Bank publication-day indicator."
+why = "Distinguishes publication days from scheduled rate carry-forwards."
+source = "computed from the Bank's publication calendar"
+url = """\
+  https://www.bankofcanada.ca/about/contact-information/bank-of-canada-holiday-schedule/"""
+
+[metadata.agentic-forecasting.baseline]
+system = "boc-usd-cad-no-change"
+label = "No-change reference"
+name = "No change from the latest Bank of Canada rate at the cutoff"
+kind = "point"
+reference = true
+method = """\
+  The run date's FXUSDCAD rate, published by 16:30 ET before the 19:00 cutoff (on a Bank \
+  holiday, the latest rate before it), for every target date: the no-change reference \
+  of a tradable price, not an expert forecast. It is read from the Bank's Valet API the \
+  day after the run date."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Bank of Canada Valet API, FXUSDCAD"
+url = "https://www.bankofcanada.ca/valet/observations/FXUSDCAD/json"
