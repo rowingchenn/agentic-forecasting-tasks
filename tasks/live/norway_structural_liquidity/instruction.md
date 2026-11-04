@@ -9,7 +9,7 @@ market operations (F-loans, F-deposits and central bank certificates). It is the
 `STAT_S` (Structural liquidity) of the dataflow `LIQUIDITY_FORECAST` in Norges Bank's data
 warehouse, and the historical line in the charts on Norges Bank's page *Liquidity in the
 banking system*. Norges Bank publishes it with each liquidity forecast, normally every
-Monday and Thursday at 12:00 ${timezone}, with values up to the day before; around holidays
+Monday and Thursday at 12:00 Europe/Oslo, with values up to the day before; around holidays
 a release can move or be skipped, and occasionally an extra one comes out on another day.
 Weekends and holidays repeat the previous business day's value, and the value can be
 negative. A forecast is settled on the value first published for that day; the last one to
@@ -22,10 +22,10 @@ single factors in Norges Bank's Bank liquidity statistics measure different quan
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
-quantile levels ${quantile_levels}.
+[1, 2, 3, 4, 7] days), the submission cutoff (16:00 Europe/Oslo on the run date), and the
+quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
-${environment_note}
+You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 
 ## Output
 
@@ -55,4 +55,4 @@ matter.
 
 ## Collected materials
 
-${materials_note}
+Save copies of the external materials you found useful for this forecast, such as data you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
