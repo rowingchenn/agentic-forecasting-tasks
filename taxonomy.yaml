@@ -69,9 +69,6 @@ domains:
   - id: environment
     name: Environment
     leaves:
-      - id: weather
-        name: Weather and temperature
-        examples: [Daily maximum air temperature, daily minimum air temperature]
       - id: air-quality
         name: Air quality
         examples: [PM2.5 concentration, ozone]
