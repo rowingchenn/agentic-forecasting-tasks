@@ -6,11 +6,11 @@ It needs only the standard library and pandas. The pipeline passes `spec`, the t
 definition from task.yaml (`extras.agentic-forecasting` plus `params`), and turns the
 results into archived files.
 
-    snapshot(run_date, spec)  X_d: demand as first published, National Gas's forecast as a
-                              run could see it, city temperatures and the calendar
+    snapshot(run_date, spec)  X_d: demand as first published, National Gas's forecast of the
+                              cycle before the run's, city temperatures and the calendar
     truth(today, spec)        every gas day's demand as first published
     baseline(run_date, spec)  National Gas's forecast for the next gas day, its 13:00 version,
-                              the first after the cutoff
+                              published during the run
 
 A gas day runs from 05:00 to 05:00 UK local time and is dated by the day it starts on, so
 it has 23 or 25 hours when the clocks change. National Gas stamps every version of a value
@@ -53,12 +53,10 @@ UK = ZoneInfo("Europe/London")  # National Gas's clock
 GAS_DAY_START = 5  # a gas day starts at 05:00 UK local time
 SCREEN = 1.2  # an actual counts if within this factor of the median forecast for its day
 SETTLED_DAYS = 14  # versions of a gas day this old no longer change, so they are cached
-# The latest demand at a snapshot is normally two days before the run date (three or four
-# days on 11 run dates since 2022-10); older means the portal's answer was incomplete
+# The latest demand at the 13:00 snapshot is normally the day before the run date (on 731 of
+# 763 run dates from 2024-10-02 to 2026-11-03; two days on 28, three or four on 4); older
+# means the portal's answer was incomplete
 STALE = timedelta(days=7)
-# B is published within this after the cutoff: the 13:00 day-ahead forecast (published about
-# 13:10), never the 16:00 one (about 16:15), which repeats it on 98.9% of run dates
-B_WINDOW = timedelta(hours=3)
 # City: (latitude, longitude) where its temperature is taken
 CITIES = {
     "london": (51.5072, -0.1276),
@@ -259,36 +257,23 @@ def first_published(rows: pd.DataFrame) -> pd.Series:
 def forecast_as_seen(
     rows: pd.DataFrame,
     index: pd.DatetimeIndex,
-    run_date: date,
     spec: dict,
     last_observed: pd.Timestamp,
     target: pd.Series,
 ) -> pd.Series:
-    """National Gas's forecast for each gas day on `index` as a run could see it: the latest
-    one (by Applicable At) published before a snapshot, of its Demand Forecast, NTS versions,
-    which start at 13:00 the day before the gas day, and its two-day-ahead forecast (D-2),
-    posted in the afternoon two days before. For a past gas day the snapshot is that of the
-    run whose target it was, the morning before, so it is the D-2 forecast; for the forecast
-    window it is this run's: the last update of the gas day before the run date (made at
-    about midnight), the morning update of the run date's (about 10:00), and the D-2
-    forecast of the target posted the day before. A past day without one is filled in
-    linearly; a window day without one carries the day before's, or the last observed
-    demand."""
-    timezone, clock = spec["schedule"]["timezone"], spec["schedule"]["snapshot"]
+    """National Gas's forecast for each gas day on `index` from the cycle before B's: the
+    latest version (by Applicable At) published before the day of the run that targets the
+    gas day, of its Demand Forecast, NTS, which starts at 13:00 on that day, and its
+    two-day-ahead forecast (D-2), posted two days before the gas day. So it is the D-2
+    forecast, for past gas days and the forecast window alike, and never the run date's
+    13:00 day-ahead version, which is B. A past day without one is filled in linearly; a
+    window day without one carries the day before's, or the last observed demand."""
     lead = timedelta(days=min(spec["horizons"]))
-    this_run = _uk(run_date, clock, timezone)
-    as_of = pd.Series(
-        [
-            _uk(day.date() - lead, clock, timezone) if day <= last_observed else this_run
-            for day in index
-        ],
-        index=index,
-        name="as_of",
-    )
+    as_of = pd.Series(index - lead, index=index, name="as_of")  # midnight, UK clock
     forecasts = rows[rows["item"].isin(["forecast", "forecast_d2"])].assign(published=_published)
     dated = forecasts.merge(as_of, left_on="gas_day", right_index=True)
     seen = (
-        dated[dated["published"] <= dated["as_of"]]
+        dated[dated["published"] < dated["as_of"]]
         .sort_values(["at", "generated"])
         .groupby("gas_day")["value"]
         .last()
@@ -526,7 +511,7 @@ def snapshot(run_date: date, spec: dict) -> dict:
     past = index <= last_observed
     target = firsts.reindex(index)
     target[past] = target[past].interpolate(limit_area="inside")
-    expert = forecast_as_seen(rows, index, run_date, spec, last_observed, target)
+    expert = forecast_as_seen(rows, index, spec, last_observed, target)
     weather, hourly, weather_meta = temperatures(start, run_date, max(spec["horizons"]), index)
     holidays, holidays_meta = bank_holidays(start.year, max(targets).year)
     holiday = index.isin(pd.to_datetime(holidays["date"], format="%Y-%m-%d")).astype(int)
@@ -563,12 +548,10 @@ def snapshot(run_date: date, spec: dict) -> dict:
             "(mcm), National Gas's Demand Actual, NTS, D+1 as first published: of the values "
             f"within a factor of {SCREEN} of the median of the forecasts for the day published "
             "before them, the first; a missing day is filled linearly",
-            "ng_forecast": "National Gas's forecast for the gas day (mcm), the latest of its "
-            "Demand Forecast, NTS versions (from 13:00 the day before the gas day) and its D-2 "
-            "forecast published before a snapshot: for past gas days the snapshot of the "
-            "morning before, so the D-2 forecast; for the window this one: the last update of "
-            "the day before the run date (about midnight), the run date's morning update "
-            "(about 10:00) and the target's D-2 forecast",
+            "ng_forecast": "National Gas's forecast for the gas day (mcm) from the cycle before "
+            "the run that targets it: the latest version published before that run's date, "
+            "which is its D-2 forecast, issued two days before the gas day; the same for past "
+            "gas days and the window, never the run date's 13:00 day-ahead forecast",
             "temp_<city>": "mean 2 m air temperature over the gas day (deg C); gas days before "
             f"run_date are reanalysis, run_date onward the {WEATHER_MODEL} forecast issued "
             "before the snapshot",
@@ -596,16 +579,17 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """National Gas's forecast the run is compared with: for each target gas day, the Demand
-    Forecast, NTS version published first (see _published) within B_WINDOW after the cutoff,
-    normally the 13:00 day-ahead forecast, published at about 13:10, which the agents cannot
-    see. The 16:00 version is never B: it repeats the 13:00 one on 98.9% of run dates, which
-    is why the run ends before 13:00; without a 13:00 version, B stays empty. A version
-    re-issued with the same stamp is a correction: the latest re-issue published by the next
-    day's snapshot, when the pipeline reads B, counts (on 2025-01-25 the 16:01 version was
-    posted as 1 and corrected to 265 an hour later), and later ones do not, so a re-run on
-    any later day records the same B. Empty until it is published."""
+    """National Gas's forecast the run is compared with: for each target gas day, its 13:00
+    day-ahead forecast, the Demand Forecast, NTS version stamped (Applicable At) first
+    between the start and the cutoff on the run date, normally at 13:01 and published at
+    about 13:10, during the run, so the agents can see it. The 16:00 version, which repeats
+    it, is never B; without a 13:00 version, B stays empty. A version re-issued with the same
+    stamp is a correction: the latest re-issue published by the next day's snapshot, when
+    the pipeline reads B, counts (on 2025-01-25 the 16:01 version was posted as 1 and
+    corrected to 265 an hour later), and later ones do not, so a re-run on any later day
+    records the same B. Empty until it is published."""
     timezone = spec["schedule"]["timezone"]
+    start = _uk(run_date, spec["schedule"]["snapshot"], timezone)
     cutoff = _uk(run_date, spec["schedule"]["cutoff"], timezone)
     read = _uk(run_date + timedelta(days=1), spec["schedule"]["snapshot"], timezone)
     days = [run_date + timedelta(days=h) for h in spec["horizons"]]
@@ -614,11 +598,10 @@ def baseline(run_date: date, spec: dict) -> dict:
     forecasts, used = [], []
     for day in days:
         mine = forecast[forecast["gas_day"] == pd.Timestamp(day)]
-        window = mine[(mine["published"] > cutoff) & (mine["published"] < cutoff + B_WINDOW)]
-        if window.empty:
+        issued = mine[(mine["at"] >= start) & (mine["at"] < cutoff) & (mine["published"] <= read)]
+        if issued.empty:
             continue
-        stamp = window.sort_values(["published", "at"])["at"].iloc[0]
-        issues = mine[(mine["at"] == stamp) & (mine["published"] <= read)]
+        issues = issued[issued["at"] == issued["at"].min()]
         version = issues.sort_values(["published", "generated"]).iloc[-1]
         forecasts.append(
             {"target_date": day.isoformat(), "point": round(float(version["value"]), 3)}
@@ -638,5 +621,5 @@ def baseline(run_date: date, spec: dict) -> dict:
     if used:
         source["stamped"] = _zoned(used[0]["at"])  # the version's Applicable At
     else:
-        source["note"] = "no version published within 3 hours after the cutoff"
+        source["note"] = "no version stamped between the start and the cutoff"
     return {"source": source, "forecasts": forecasts}
