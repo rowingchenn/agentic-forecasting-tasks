@@ -1,0 +1,125 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/ercot-peak-load-live"
+keywords = ["forecasting", "live", "energy"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/Chicago"
+AF_CUTOFF = "09:25"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "ercot_peak_load"
+title = "ERCOT daily peak load"
+question = """\
+  How high will electricity demand on the Texas grid peak on each of the next seven \
+  days?"""
+taxonomy = "energy/electricity-demand"
+driver = "weather"
+domain = "Electricity demand"
+region = "Texas (ERCOT grid)"
+unit = "MW"
+tradable = false
+summary = """\
+  The highest hourly electricity demand of each day on the ERCOT grid, which serves \
+  about 90% of Texas load. Weather drives it, and grid notices and news add information \
+  that history alone does not contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Maximum over the operating day's hours (America/Chicago) of the hourly system total \
+  load."""
+settlement = "First published value, posted shortly after the operating day ends."
+
+[metadata.agentic-forecasting.y.source]
+name = "ERCOT NP6-345-CD, Actual System Load by Weather Zone"
+url = "https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "07:05"
+every_days = 1
+first_run = "2026-10-16"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily, with the hourly files it is derived from"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Hourly load by weather zone (ERCOT NP6-345-CD)", "Daily peaks of ERCOT's latest seven-day forecast before the snapshot (NP3-565-CD)", "Hourly temperature forecast per zone city (ECMWF IFS via Open-Meteo)"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Peak load history"
+columns = ["target"]
+what = "The target itself, every complete day up to the day before the run date."
+why = """\
+  Demand is persistent and seasonal; the history carries level, trend and weekly shape."""
+source = "ERCOT NP6-345-CD"
+url = "https://www.ercot.com/mp/data-products/data-product-details?id=NP6-345-CD"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier ERCOT official forecast"
+columns = ["ercot_official"]
+expert = true
+what = """\
+  ERCOT's seven-day forecast of each day's peak as a run could see it, the latest \
+  version before a snapshot: for past days, the one before the previous day's run, one \
+  day ahead; for the forecast window, the one before this run (normally 06:30). The \
+  09:30 version the run is compared with comes after the cutoff and is not included."""
+why = """\
+  ERCOT's own models combine weather forecasts across the grid with what its operators \
+  know about load, which the history and city temperatures alone cannot see."""
+source = "ERCOT NP3-565-CD"
+url = "https://www.ercot.com/mp/data-products/data-product-details?id=NP3-565-CD"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Temperature in the eight weather zones"
+columns = ["tmax_<zone>", "tmin_<zone>"]
+what = """\
+  Daily maximum and minimum air temperature in one city per ERCOT weather zone (Houston, \
+  Dallas, Austin, Midland and four more): reanalysis for past days, the ECMWF forecast \
+  issued before the run for the forecast window."""
+why = """\
+  Air conditioning and electric heating drive peak demand, so tomorrow's temperature is \
+  the strongest single predictor, region by region."""
+source = "Open-Meteo (ERA5 reanalysis, ECMWF IFS 0.25° forecast)"
+url = "https://open-meteo.com/en/docs/ecmwf-api"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "holiday"]
+what = "Day of week and US federal holidays."
+why = "Offices and industry use less power on weekends and holidays."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "ercot-official"
+label = "ERCOT official"
+name = "ERCOT official seven-day load forecast"
+kind = "point"
+method = """\
+  The forecast model ERCOT flags as in use, first version posted after the cutoff (the \
+  09:30 version), which the agents cannot see; it is recorded the next day; the daily \
+  maximum of its hourly system total."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "ERCOT NP3-565-CD, Seven-Day Load Forecast by Model and Weather Zone"
+url = "https://www.ercot.com/mp/data-products/data-product-details?id=NP3-565-CD"
