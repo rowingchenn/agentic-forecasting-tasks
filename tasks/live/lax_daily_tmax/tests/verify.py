@@ -1,4 +1,4 @@
-"""Submission checks. Accuracy is scored later, once delayed reanalysis values become available."""
+"""Submission checks. Accuracy is scored later, once the NWS climate reports are published."""
 
 import json
 import math
@@ -31,10 +31,10 @@ def forecast_problems(data: object) -> list[str]:
             continue
         values = [quantiles[level] for level in levels]
         if not all(
-            isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) and v > 0
+            isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v)
             for v in values
         ):
-            problems.append(f"{entry.get('target_date')}: values must be positive numbers")
+            problems.append(f"{entry.get('target_date')}: values must be finite numbers")
         elif any(low > high for low, high in zip(values, values[1:], strict=False)):
             problems.append(f"{entry.get('target_date')}: quantiles decrease")
     return problems

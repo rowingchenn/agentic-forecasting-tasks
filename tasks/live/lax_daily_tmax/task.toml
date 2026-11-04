@@ -10,9 +10,9 @@ cpus = 4
 memory_mb = 8192
 
 [environment.env]
-AF_TIMEZONE = "America/Los_Angeles"
-AF_CUTOFF = "10:00"
-AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_TIMEZONE = "UTC"
+AF_CUTOFF = "18:20"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
 [agent]
@@ -30,94 +30,102 @@ network_justification = """\
 
 [metadata.agentic-forecasting]
 target = "lax_daily_tmax"
-title = "LAX-area daily maximum temperature"
+title = "Daily maximum temperature at Los Angeles airport"
 question = """\
-  What will the maximum 2-metre air temperature near LAX be on each of the next seven \
-  days?"""
+  What will the highest temperature at Los Angeles International Airport be on each of the \
+  next six days?"""
 taxonomy = "environment/weather"
 driver = "weather"
-domain = "Daily temperature"
-region = "Los Angeles, California (LAX-area coordinates)"
-unit = "K"
+domain = "Weather"
+region = "Los Angeles, California (LAX)"
+unit = "°F"
 tradable = false
 summary = """\
-  A seven-day temperature forecast at fixed LAX-area coordinates. Ground truth is the \
-  Open-Meteo ERA5 reanalysis daily maximum, not an airport station measurement. ECMWF \
-  IFS 0.25-degree forecasts served by Open-Meteo are the operational model baseline."""
+  The day's highest temperature at Los Angeles International Airport, as the National \
+  Weather Service's daily climate report gives it. The airport is on the coast: sea breezes \
+  and the marine layer usually keep it mild, while offshore winds such as the Santa Ana \
+  bring some of its warmest days. Forecasts, weather models and forecast discussions carry \
+  information that the temperature history alone does not."""
 
 [metadata.agentic-forecasting.y]
 definition = """\
-  Open-Meteo archive temperature_2m_max for latitude 33.94, longitude -118.40, ERA5 \
-  (models=era5), elevation=38 metres, cell_selection=land, timezone=America/Los_Angeles. \
-  The provider computes daily local-calendar maxima of its 2-metre temperature series. \
-  Convert Celsius to Kelvin by adding 273.15. This is a gridded, elevation-adjusted \
-  reanalysis target, not NOAA GHCND or LAX station observations."""
+  The MAXIMUM under TEMPERATURE (F) in the NWS Daily Climate Report for Los Angeles \
+  International Airport (product CLILAX, NWS Los Angeles/Oxnard), in whole °F, for the \
+  climate day from midnight to midnight Pacific Standard Time (on standard time all year, \
+  so 1 a.m. to 1 a.m. PDT in summer)."""
 settlement = """\
-  First finite ERA5 value observed by the pipeline after a six-calendar-day publication \
-  buffer. Later reanalysis revisions do not replace previously settled truth. This is \
-  first-observed archive data, not guaranteed first publication. Missing recent dates \
-  remain unresolved; no forecast substitutes for truth."""
+  First final report for the day that gives a maximum, normally issued within 3 hours after \
+  midnight PST (at the latest 4 h 49 min after it in 2024-2026); the preliminary report of \
+  about 5 p.m. and later corrections do not count. A day without one stays unresolved."""
 
 [metadata.agentic-forecasting.y.source]
-name = "Open-Meteo Historical Weather API, pinned ERA5 reanalysis"
-url = "https://open-meteo.com/en/docs/historical-weather-api"
+name = "NWS Daily Climate Report CLILAX, archived by the Iowa Environmental Mesonet"
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=CLILAX"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "07:30"
+snapshot = "16:35"
 every_days = 1
-first_run = "2026-10-29"
+first_run = "2026-11-05"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-01"
-frequency = "daily local calendar dates"
-given_to = "TSFMs only; live agents find their own information"
-latitude = 33.94
-longitude = -118.4
-elevation = 38
-cell_selection = "land"
-variable = "temperature_2m_max"
-history_model = "era5"
-forecast_model = "ecmwf_ifs025"
-archive_delay_days = 6
-raw = ["Historical daily Celsius and Kelvin temperatures with unfilled missing values", "Complete historical API response and request metadata", "Complete baseline API response and request metadata"]
+frequency = "daily, with the climate reports and forecast issues it is derived from"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Every final climate report's maximum, with its issue time (CLILAX)", "Daytime highs of the latest NWS Tabular State Forecast before the snapshot (SFTLOX)"]
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Temperature history"
 columns = ["target"]
 what = """\
-  Finite ERA5 daily maxima in Kelvin from history_start through the latest available \
-  date no later than run_date minus six days. More recent target values remain empty."""
+  The target itself, every day up to the day before the run date, from its first final \
+  climate report; the rare day without one is filled in linearly from its neighbours."""
 why = """\
-  Carries the seasonal temperature cycle, local climate and recent weather conditions \
-  without using future observations."""
-source = "Open-Meteo ERA5"
-url = "https://open-meteo.com/en/docs/historical-weather-api"
+  Carries the seasonal cycle and the recent run of warm or cool days, which persist for a \
+  few days with the weather pattern."""
+source = "NWS Daily Climate Report CLILAX, archived by the Iowa Environmental Mesonet"
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=CLILAX"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier NWS forecast"
+columns = ["nws"]
+expert = true
+what = """\
+  The NWS forecast high (6 a.m. to 6 p.m.) for Los Angeles Intl Airport as a run could see \
+  it: for past days, from the latest Tabular State Forecast issued before the previous \
+  day's snapshot, one day ahead; for the forecast window, from the latest issued before \
+  this snapshot. The forecast the run is compared with comes out after the cutoff and is \
+  not included."""
+why = """\
+  Forecasters combine weather models with local knowledge of the marine layer and offshore \
+  winds, which the temperature history alone cannot see."""
+source = """\
+  NWS Los Angeles/Oxnard Tabular State Forecast (SFTLOX), archived by the Iowa \
+  Environmental Mesonet"""
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=SFTLOX"
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Calendar"
 columns = ["dow", "doy_sin", "doy_cos"]
 what = """\
-  Weekday and annual-cycle sine/cosine features, known for every history and forecast \
-  date."""
-why = """\
-  Represent calendar timing and the smooth annual temperature cycle without substituting \
-  forecasts into missing truth."""
+  Weekday and the sine and cosine of the day of the year, known for every history and \
+  forecast date."""
+why = "Represent the smooth annual temperature cycle."
 source = "computed"
 
 [metadata.agentic-forecasting.baseline]
-system = "lax-ecmwf-ifs025"
-label = "ECMWF IFS 0.25° via Open-Meteo"
-name = "Pinned ECMWF IFS 0.25-degree operational temperature forecast"
+system = "nws-official"
+label = "NWS official"
+name = "NWS Los Angeles/Oxnard forecast high for Los Angeles Intl Airport"
 kind = "point"
 method = """\
-  Request models=ecmwf_ifs025 at the same coordinates, requested elevation, \
-  cell-selection policy and timezone; use temperature_2m_max for run_date+1 through \
-  run_date+7, converted to Kelvin. Different native model grids are not identical \
-  observation points. Archive the complete response and retrieval timestamp before the \
-  cutoff. Open-Meteo does not supply a forecast-cycle issue timestamp here, so retrieval \
-  time is not described as model issue time. No automatic best-match model selection or \
-  late reconstruction is allowed."""
+  The first Tabular State Forecast (SFTLOX) the NWS issues after the cutoff, normally the \
+  one of about 18:28 UTC, which the agents cannot see: its daytime high (6 a.m. to 6 p.m.) \
+  for Los Angeles Intl Airport on each target date. If no SFTLOX comes out within a day \
+  of the cutoff, the first Point Forecast Matrices (PFMLOX) after it, whose Max for Los \
+  Angeles Airport is the same forecast. It is recorded the next day."""
 
 [metadata.agentic-forecasting.baseline.source]
-name = "ECMWF IFS 0.25° served by Open-Meteo"
-url = "https://open-meteo.com/en/docs/ecmwf-api"
+name = """\
+  NWS Tabular State Forecast SFTLOX (Point Forecast Matrices PFMLOX if it is missing), \
+  archived by the Iowa Environmental Mesonet"""
+url = "https://mesonet.agron.iastate.edu/wx/afos/p.php?pil=SFTLOX"
