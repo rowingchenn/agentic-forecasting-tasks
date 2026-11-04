@@ -87,7 +87,7 @@ forecast_result = forecast_valid()
 materials_result, material_count = materials()
 write(
     {
-        "overall": (forecast_result["score"] + materials_result["score"]) / 2,
+        "reward": (forecast_result["score"] + materials_result["score"]) / 2,
         "forecast_valid": forecast_result,
         "materials_valid": materials_result,
         "materials": material_count,
