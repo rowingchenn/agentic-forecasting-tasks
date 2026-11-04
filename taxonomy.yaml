@@ -17,6 +17,9 @@ domains:
       - id: electricity-demand
         name: Electricity demand
         examples: [ERCOT daily peak load, PJM daily load, CAISO daily load]
+      - id: gas-demand
+        name: Gas demand
+        examples: [GB NTS gas demand, AEMO Victoria gas demand]
       - id: renewable-generation
         name: Renewable generation
         examples: [ERCOT daily wind output, CAISO daily solar output]
@@ -52,6 +55,9 @@ domains:
       - id: economic-activity
         name: Economic activity
         examples: [Retail foot traffic, freight volumes]
+      - id: bank-liquidity
+        name: Bank liquidity
+        examples: [Norges Bank structural liquidity, ECB excess liquidity]
 
   - id: markets
     name: Financial markets
@@ -69,6 +75,9 @@ domains:
   - id: environment
     name: Environment
     leaves:
+      - id: weather
+        name: Weather
+        examples: [Daily maximum air temperature, daily precipitation]
       - id: air-quality
         name: Air quality
         examples: [PM2.5 concentration, ozone]
@@ -78,6 +87,13 @@ domains:
       - id: natural-hazards
         name: Natural hazards
         examples: [Wildfire burned area]
+
+  - id: space
+    name: Space
+    leaves:
+      - id: space-weather
+        name: Space weather
+        examples: [Planetary Kp index, solar wind speed]
 
   - id: mobility
     name: Transport and mobility
@@ -106,6 +122,7 @@ facets:
     economic: Economic conditions and policy
     behavioral: Human behavior and events
     market: Market expectations
+    solar: Solar activity
   tradable:
     "true": Tradable price (control)
     "false": Not tradable
