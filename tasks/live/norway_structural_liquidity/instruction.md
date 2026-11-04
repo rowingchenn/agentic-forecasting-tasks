@@ -1,5 +1,6 @@
 Forecast the structural liquidity of the Norwegian banking system, as Norges Bank publishes
-it, for Tuesday to Friday of this week and Monday of next week. You have about 90 minutes.
+it, for Tuesday to Friday of this week and Monday of next week; the run date is a Monday.
+You have about 90 minutes.
 
 ## The target
 
@@ -19,10 +20,17 @@ which stays near Norges Bank's NOK 35 billion target, Norges Bank's forecast of 
 liquidity including central bank certificates (`FCAST_CBC`), and the cumulative effects of
 single factors in Norges Bank's Bank liquidity statistics measure different quantities.
 
+The submission cutoff, 11:55 Europe/Oslo on the run date, comes before Norges Bank's 12:00
+release of that day, which adds the values for the previous Thursday to Sunday; the latest
+values published before the cutoff normally run to the Wednesday before the run date. The
+targets are first published later: Tuesday's and Wednesday's values with the Thursday
+release, Thursday's and Friday's with the next Monday's, and next Monday's with the
+Thursday release after it.
+
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1, 2, 3, 4, 7] days), the submission cutoff (16:00 Europe/Oslo on the run date), and the
+[1, 2, 3, 4, 7] days), the submission cutoff (11:55 Europe/Oslo on the run date), and the
 quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.

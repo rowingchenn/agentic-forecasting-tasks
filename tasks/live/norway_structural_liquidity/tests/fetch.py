@@ -6,9 +6,11 @@ It needs only the standard library and pandas. The pipeline passes `spec`, the t
 definition from task.yaml (`extras.agentic-forecasting` plus `params`), and turns the
 results into archived files.
 
-    snapshot(run_date, spec)  X_d: structural liquidity history and the payment calendar
+    snapshot(run_date, spec)  X_d: structural liquidity history, Norges Bank's earlier
+                              forecast and the payment calendar, from releases before the
+                              run date
     truth(today, spec)        every day's structural liquidity published so far
-    baseline(run_date, spec)  Norges Bank's own forecast, its latest release by the run date
+    baseline(run_date, spec)  Norges Bank's own forecast, its release at 12:00 on the run date
 
 No credentials: Norges Bank's SDMX API is keyless, and Norges Bank allows its data to be
 reused with the source stated. Each release of the liquidity forecast is a version
@@ -143,6 +145,55 @@ def actuals(start: date, day: date, strict: bool = False) -> pd.DataFrame:
     return pd.concat(frames).sort_values("date").reset_index(drop=True)
 
 
+def releases(first_year: int, last_year: int) -> pd.DataFrame:
+    """Every release of Norges Bank's forecast (FCAST_S) in the years' sets, one request per
+    year: forecast_year, version (the release date), date and value (NOK million). A year
+    without a set yet is left out."""
+    columns = ["forecast_year", "version", "date", "value"]
+    frames = []
+    for year in range(first_year, last_year + 1):
+        raw = _get_optional(f"{API}/D.{FORECAST}.{year}.?{FORMAT}")  # no version: all of them
+        if raw is None:
+            continue
+        rows = _csv(raw).dropna(subset=["OBS_VALUE"])
+        frames.append(
+            pd.DataFrame(
+                {
+                    "forecast_year": year,
+                    "version": pd.to_datetime(rows["FORECAST_DATE"]),
+                    "date": pd.to_datetime(rows["TIME_PERIOD"]),
+                    "value": pd.to_numeric(rows["OBS_VALUE"], errors="raise").astype(float),
+                }
+            )
+        )
+    return (
+        pd.concat(frames, ignore_index=True)[columns] if frames else pd.DataFrame(columns=columns)
+    )
+
+
+def forecast_as_seen(
+    rows: pd.DataFrame, index: pd.DatetimeIndex, run_date: date, last_observed: pd.Timestamp
+) -> tuple[pd.Series, pd.DataFrame]:
+    """Norges Bank's forecast of each day on `index` as a run could see it: FCAST_S of the
+    latest release dated before the run. For a past day that is the Monday run that targeted
+    it (the Monday before a Tuesday to Sunday, the one a week earlier for a Monday), so
+    normally the Thursday release before that Monday; for the days after last_observed, this
+    run's, normally the Thursday release before the run date. A day no release covers yet (a
+    year's set first appears in mid-December, 2024's only on 2 January) carries the day
+    before's value, and the history's first days the first value. Also the rows used."""
+    back = pd.to_timedelta((index.dayofweek - 1) % 7 + 1, unit="D")
+    as_of = pd.Series(index - back, index=index, name="as_of")
+    as_of[index > last_observed] = pd.Timestamp(run_date)
+    dated = rows.merge(as_of, left_on="date", right_index=True)
+    seen = (
+        dated[dated["version"] < dated["as_of"]]
+        .sort_values(["date", "version"])
+        .drop_duplicates("date", keep="last")
+    )
+    value = seen.set_index("date")["value"].reindex(index).ffill().bfill()
+    return value.rename("nb_forecast"), seen.drop(columns="as_of").reset_index(drop=True)
+
+
 def closed_days(year: int) -> set[date]:
     """Norwegian public holidays, Christmas Eve and New Year's Eve."""
     easter = (pd.Timestamp(year, 1, 1) + pd.offsets.Easter()).date()
@@ -178,26 +229,39 @@ def calendar(index: pd.DatetimeIndex) -> pd.DataFrame:
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
-    """X_d as published right now: one row per day from history_start to the last target
-    date, `target` empty after the last published day, the calendar known for the window."""
+    """X_d from the releases dated before the run date: one row per day from history_start
+    to the last target date, `target` empty after the last published day, Norges Bank's
+    earlier forecast and the calendar known for the window. The run date's release comes
+    out at 12:00, after the cutoff, and is B, so it never enters X_d, even if the snapshot
+    is late or rebuilt."""
     start = date.fromisoformat(spec["x"]["history_start"])
-    rows = actuals(start, run_date, strict=True)
+    rows = actuals(start, run_date - timedelta(days=1), strict=True)
     published = rows.set_index("date")["value"]
     end = run_date + timedelta(days=max(spec["horizons"]))
     index = pd.date_range(start, end, freq="D", name="timestamp")
     # Norges Bank never publishes the last days of a year: filled in linearly here, while
     # truth leaves them out
     target = published.reindex(index).interpolate(limit_area="inside").rename("target")
+    last_observed = published.index.max()
+    expert, seen = forecast_as_seen(releases(start.year, end.year), index, run_date, last_observed)
     used = rows.groupby("forecast_year")["version"].first()
     return {
-        "series": pd.concat([target, calendar(index)], axis=1).rename_axis("timestamp"),
-        "last_observed": published.index.max().date(),
-        "raw": {"structural_liquidity.csv": rows},
+        "series": pd.concat([target, expert, calendar(index)], axis=1).rename_axis("timestamp"),
+        "last_observed": last_observed.date(),
+        "raw": {
+            "structural_liquidity.csv": rows,
+            "nb_forecast.csv": seen.assign(version=seen["version"].dt.date),
+        },
         "sources": {
             "structural_liquidity": {
                 "url": API,
                 "series": ACTUAL,
                 "versions": {str(year): v for year, v in used.items()},
+            },
+            "nb_forecast": {
+                "url": API,
+                "series": FORECAST,
+                "note": "every release of each year's set, one request per year",
             },
             "calendar": {
                 "url": ABOUT,
@@ -206,7 +270,13 @@ def snapshot(run_date: date, spec: dict) -> dict:
         },
         "covariate_notes": {
             "target": "structural liquidity (NOK million) as in each year's latest release "
-            "by the run date; the last days of a year, never published, are filled linearly",
+            "before the run date; the last days of a year, never published, are filled "
+            "linearly",
+            "nb_forecast": "Norges Bank's forecast of structural liquidity (NOK million, "
+            "FCAST_S) from its latest release before a run: for past days the Monday run "
+            "that targeted the day, for the days after last_observed this run; a day no "
+            "release covers yet carries the day before's value (the history's first days, the "
+            "first value)",
             "dow": "day of week, Monday = 0",
             "business_day": "1 on Norwegian business days: not a weekend, a public holiday, "
             "24 or 31 December",
@@ -233,20 +303,21 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """Norges Bank's own forecast: for each target date's year, FCAST_S of that year's latest
-    release dated on or before the run date, normally the one published at noon that day.
-    Every release stays on the API, so a later call gives the same numbers."""
+    """Norges Bank's own forecast: for each target date's year, FCAST_S of that year's
+    release dated on the run date, published at noon, after the cutoff. Without a release on
+    the run date (Easter Monday, Whit Monday) there is no B: an earlier release was public
+    during the run. Every release stays on the API, so a later call gives the same
+    numbers."""
     timezone = ZoneInfo(spec["schedule"]["timezone"])
     targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
     used: dict[str, str] = {}
     points: dict[date, float] = {}
     for year in sorted({target.year for target in targets}):
-        published = latest(versions(year).get(FORECAST, []), run_date)
-        if published is None:  # the next year's forecast first appears in mid-December
+        if run_date not in versions(year).get(FORECAST, []):
             continue
-        rows = version(year, published)
+        rows = version(year, run_date)
         forecast = rows[rows["series"] == FORECAST].set_index("date")["value"]
-        used[str(year)] = published.isoformat()
+        used[str(year)] = run_date.isoformat()
         for target in targets:
             if target.year == year and pd.Timestamp(target) in forecast.index:
                 points[target] = float(forecast[pd.Timestamp(target)])

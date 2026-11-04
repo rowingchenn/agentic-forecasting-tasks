@@ -3,7 +3,7 @@ artifacts = ["/home/user/output"]
 
 [task]
 name = "agentic-forecasting/norway-structural-liquidity-live"
-keywords = ["forecasting", "live", "markets"]
+keywords = ["forecasting", "live", "economy"]
 
 [environment]
 cpus = 4
@@ -11,7 +11,7 @@ memory_mb = 8192
 
 [environment.env]
 AF_TIMEZONE = "Europe/Oslo"
-AF_CUTOFF = "16:00"
+AF_CUTOFF = "11:55"
 AF_HORIZONS = "[1, 2, 3, 4, 7]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
@@ -34,7 +34,7 @@ title = "Norway structural liquidity"
 question = """\
   How much structural liquidity will Norway's banking system have from Tuesday to Friday \
   this week and on Monday next week?"""
-taxonomy = "markets/bank-liquidity"
+taxonomy = "economy/bank-liquidity"
 driver = "economic"
 domain = "Bank liquidity"
 region = "Norway"
@@ -67,26 +67,50 @@ name = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, serie
 url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "13:05"
+snapshot = "09:45"
 every_days = 7
-first_run = "2026-11-02"
+first_run = "2026-11-09"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-01"
 frequency = "daily"
 given_to = "TSFMs only; agents find their own information"
-raw = ["Daily structural liquidity with the release it was taken from (Norges Bank)"]
+raw = ["Daily structural liquidity with the release it was taken from (Norges Bank)", "Norges Bank's forecast of each day as a run could see it, with the release it was taken from"]
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Structural liquidity history"
 columns = ["target"]
 what = """\
-  The target itself, every day up to the day before Norges Bank's latest release; the \
-  last days of each year, which Norges Bank never publishes, are filled in linearly."""
+  The target itself, every day up to the day before Norges Bank's latest release before \
+  the run date: normally through the Wednesday before, from Thursday's release. The last \
+  days of each year, which Norges Bank never publishes, are filled in linearly. Norges \
+  Bank publishes the actual values only with its forecast releases, and the run date's, \
+  with the values for Thursday to Sunday, comes out at 12:00, after the cutoff, so \
+  neither the agents nor the TSFMs have them. This is an accepted exception to the rule \
+  that the previous day's value is published by the start: Norges Bank publishes those \
+  values only with the release the run is compared with."""
 why = """\
   The level carries over from day to day between payments, and the history shows how \
   each kind of payment moved it in past months and years."""
 source = "Norges Bank"
+url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier Norges Bank forecast"
+columns = ["nb_forecast"]
+expert = true
+what = """\
+  Norges Bank's forecast of each day's structural liquidity as a run could see it, from \
+  its latest release before the run: for past days, the release before the Monday run \
+  that targeted the day; for Thursday to Sunday before the run date and the forecast \
+  window, the release before the run date, normally the previous Thursday's. The run \
+  date's 12:00 release the run is compared with comes after the cutoff and is not \
+  included. A day no release covers yet carries the day before's value."""
+why = """\
+  Norges Bank knows the government's large payments, its foreign exchange transactions \
+  and the borrowing calendar in advance, which the history and the regular payment days \
+  alone cannot see."""
+source = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series FCAST_S)"
 url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
 
 [[metadata.agentic-forecasting.x.groups]]
@@ -112,11 +136,12 @@ label = "Norges Bank official"
 name = "Norges Bank's structural liquidity forecast"
 kind = "point"
 method = """\
-  Norges Bank's forecast of structural liquidity from its latest release dated on or \
-  before the run date, normally the one published at 12:00 on the run date. A forecast \
-  covers one calendar year, so target dates in the next year come from the latest \
-  release of that year's forecast, which first appears in mid-December. Norges Bank \
-  keeps every release, so reading the forecast again later gives the same numbers."""
+  Norges Bank's forecast of structural liquidity from its release dated on the run date, \
+  published at 12:00, after the cutoff, which the agents cannot see. A forecast covers \
+  one calendar year, so target dates in the next year come from that year's forecast \
+  released on the run date. Without a release on the run date (Easter Monday, Whit \
+  Monday) there is no B that day; an earlier release, which the agents could see, is \
+  never used. Norges Bank keeps every release, and it is recorded the next day."""
 
 [metadata.agentic-forecasting.baseline.source]
 name = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series FCAST_S)"
