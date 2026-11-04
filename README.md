@@ -51,7 +51,7 @@ tables last in the file.
 | `…schedule.snapshot` | when a run day starts, in `AF_TIMEZONE` |
 | `…schedule.every_days`, `first_run` | a run day every `every_days` days from `first_run`; truth is recorded daily regardless |
 | `…x` | X_d: the curated input the TSFMs receive. Each column group has `what` it is and `why` it should help, in plain words, plus its source; the website shows them as written. `expert = true` marks the earlier official forecast, which only the `*-expert` TSFMs get |
-| `…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read |
+| `…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read; `reference = true` for a tradable control's no-change price. Leave the table out when no public expert forecast exists |
 
 Write the schedule into `instruction.md` as well, in words; ALE no longer fills templates.
 Two paragraphs of the instruction are shared by every target and must stay verbatim,
@@ -67,8 +67,8 @@ The website's [Methods](https://chennzi-agentic-forecasting.static.hf.space/#/me
 page states the tuple and its timing rules formally. For an author they come down to these
 steps, in this order:
 
-1. **y.** A daily series that an authority publishes continuously, settled on its first
-   published value. Define it in `instruction.md` precisely enough for someone else to
+1. **y.** A daily or weekly series that an authority publishes continuously, settled on
+   its first published value. A weekly target date is the date that labels the week. Define it in `instruction.md` precisely enough for someone else to
    recompute it: the report, the aggregation, the local day, and how many observations a
    day needs to count.
 2. **B.** The public expert or official forecast of the same y, and the issue of it you
@@ -81,8 +81,10 @@ steps, in this order:
    comparison. Agents then forecast from nearly the information B uses and never see it.
 4. **Start (`schedule.snapshot`).** Early enough before the cutoff for the agents' 90
    minutes plus building and setting up the sandbox: 1 h 45 min to 2 h 20 min here.
-   The previous day's value must be published by then. If it is not, the target does not
-   qualify with this B.
+   The previous day's value must be published by then. If it comes out only after the
+   start but before the cutoff, the agents can still find it while the TSFMs' X_d ends a
+   day earlier; say so in the X description (GB gas demand, Norway's structural
+   liquidity). If it comes out after the cutoff, the target does not qualify with this B.
 5. **Horizons (`AF_HORIZONS`).** The dates B forecasts, counted from the run date: 1–7 for
    ERCOT's seven-day forecast, 1–13 for the NWS forecast, 0 and 1 for ECCC's Today and
    Tomorrow. Use 0 only when the run day's target period starts after the cutoff
@@ -160,8 +162,8 @@ ale run tasks/mock/ercot_peak_load/2026-10-22 --config <agent>.toml
 ## Taxonomy
 
 [`taxonomy.yaml`](taxonomy.yaml) organises targets by the system that generates the series
-(energy, public health, economy and labor, financial markets, environment, transport and
-mobility, online attention), with leaves inside each domain and two facets across them:
+(energy, public health, economy and labor, financial markets, environment, space,
+transport and mobility, online attention), with leaves inside each domain and two facets across them:
 the main driver of variation, and whether the target is a tradable price (a control).
 Every live Task names one leaf. The website counts tasks per node, empty ones included,
 and lists candidate targets for the gaps, so new targets can be chosen for coverage.
