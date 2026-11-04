@@ -1,4 +1,4 @@
-"""Submission checks. Accuracy is scored later, once completed-day closing prices are observed."""
+"""Submission checks. Accuracy is scored later, once the official closing prices are published."""
 
 import json
 import math

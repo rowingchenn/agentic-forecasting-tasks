@@ -1,23 +1,23 @@
-Forecast Apple Inc. (AAPL) closing prices for the dates in task.json. The Task runs
-weekly on Mondays and asks for Tuesday through Friday and the following Monday.
-You have about 90 minutes.
+Forecast the official closing price of Apple stock (AAPL) for the coming week. The Task
+runs on Mondays after the stock market closes and asks for Tuesday through Friday and the
+following Monday; forecasts are due at 18:35 Eastern Time (America/New_York) on the run
+date. You have about 90 minutes.
 
 ## The target
 
-For each target date in America/New_York, the target is Yahoo Finance's AAPL daily chart
-`indicators.quote[0].close`, in USD per share: the regular-session close on or before
-that date. If the exchange is closed, use the previous session's close. This is not
-`adjclose`, an intraday quote or an extended-hours trade. Yahoo can retrospectively
-revise historical prices for splits; the series is not permanently split-unadjusted.
-
-Settlement uses the first completed-calendar-day value observed and retained by the
-pipeline. This is not necessarily the first value published by the exchange. Subsequent
-vendor revisions do not overwrite already settled values.
+For each target date, the target is the official closing price of Apple Inc. common stock
+(ticker AAPL) for that date's regular trading session on Nasdaq (09:30 to 16:00 ET), in US
+dollars per share with cents, as published that day: it is not adjusted for later stock
+splits or dividends. On a date without a regular session (weekends and exchange holidays),
+the target is the previous session's closing price. The run date's own close is published
+before this task starts. A forecast is settled on the first closing price published for
+that date. Pre-market and after-hours trades, intraday prices and a split- or
+dividend-adjusted close are different quantities.
 
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1, 2, 3, 4, 7] days), the submission cutoff (09:25 America/New_York on the run date), and the
+[1, 2, 3, 4, 7] days), the submission cutoff (18:35 America/New_York on the run date), and the
 quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.

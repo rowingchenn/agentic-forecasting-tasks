@@ -1,9 +1,11 @@
-"""Host-side Yahoo prices and no-change reference; stdlib + pandas only.
+"""AAPL official closing price: where the numbers for this target come from.
 
-No API key or other credential is required.
-Calls in the same process share a cached Yahoo response. Separate CLI commands
-refetch the completed-session history. The pipeline retains first-seen truth.
-No publisher scraping or credentials are exposed to the evaluated agent.
+The pipeline imports this file on the host, outside every episode. No credentials: Yahoo
+Finance's daily chart is keyless. Its close equals Nasdaq's official closing price.
+
+    snapshot(run_date, spec)  X_d: the close history through the run date, as published now
+    truth(today, spec)        every completed day's close as published now
+    baseline(run_date, spec)  no change from the run date's close
 """
 
 from __future__ import annotations
@@ -14,7 +16,6 @@ import time
 from datetime import date, datetime, timedelta
 from datetime import time as clock
 from functools import cache
-from pathlib import Path
 from typing import ClassVar
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -131,6 +132,14 @@ def _prices(start_text, through_text):
     frame.index = pd.DatetimeIndex(
         [datetime.fromtimestamp(t, ZONE).date() for t in stamps], name="timestamp"
     )
+    # For some hours after the close, Yahoo leaves the day's bar without a close; its quote
+    # then shows the session's last regular-market price, which is that close.
+    meta, last = chart["meta"], frame.index[-1]
+    closed = meta.get("currentTradingPeriod", {}).get("regular", {}).get("end", 0)
+    if (pd.isna(frame.at[last, "close"]) and meta.get("regularMarketTime", 0) >= closed > 0
+            and datetime.fromtimestamp(closed, ZONE).date() == last.date()):
+        frame.at[last, "close"] = meta["regularMarketPrice"]
+    frame["close"] = frame["close"].round(2)  # cents; Yahoo sends float32 noise
     frame = frame.loc[frame.index <= pd.Timestamp(through)].sort_index()
     if frame.index.has_duplicates:
         raise RuntimeError("Yahoo returned duplicate daily bars.")
@@ -170,22 +179,23 @@ def _daily(start, through):
     return series.rename("target")
 
 
+def _cutoff(run_date, spec):
+    if spec["schedule"]["timezone"] != "America/New_York":
+        raise ValueError("This target requires America/New_York calendar dates.")
+    return datetime.combine(run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE)
+
+
 def _guard(run_date, spec):
     now = _now()
-    cutoff = datetime.combine(
-        run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE
-    )
-    if run_date != now.date() or now >= cutoff:
-        raise RuntimeError(
-            "Snapshots/baselines require today and must finish before the cutoff."
-        )
+    if run_date != now.date() or now >= _cutoff(run_date, spec):
+        raise RuntimeError("Snapshots require today and must finish before the cutoff.")
     return now
 
 
 def snapshot(run_date, spec):
     as_of = _guard(run_date, spec)
     start = date.fromisoformat(spec["x"]["history_start"])
-    through = run_date - timedelta(days=1)
+    through = run_date  # its close is published at 16:00 ET, before the 16:45 start
     past = _daily(start, through)
     _guard(run_date, spec)  # Do not archive a slow collection that crossed the cutoff.
     end = run_date + timedelta(days=max(spec["horizons"]))
@@ -218,75 +228,14 @@ def truth(today, spec):
     )
 
 
-def _snapshot_reference(run_date, spec):
-    """The daily pipeline collects B on the next day; use the frozen run-day X_d."""
-    x = (
-        Path(__file__).resolve().parents[3]
-        / "mock"
-        / spec["target"]
-        / run_date.isoformat()
-        / "oracle"
-        / "assets"
-        / "x"
-    )
-    if not x.exists():
-        return None
-    task = json.loads((x / "task.json").read_text())
-    manifest = json.loads((x / "MANIFEST.json").read_text())
-    observed = date.fromisoformat(task["last_observed"])
-    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
-    cutoff = datetime.combine(
-        run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE
-    )
-    if (
-        task["run_date"] != run_date.isoformat()
-        or observed >= run_date
-        or as_of.tzinfo is None
-        or as_of.astimezone(ZONE).date() != run_date
-        or as_of >= cutoff
-    ):
-        raise RuntimeError(
-            "Archived reference is not a valid pre-cutoff run-day snapshot."
-        )
-    series = pd.read_csv(x / "series.csv", index_col="timestamp", parse_dates=True)
-    point = float(series.loc[pd.Timestamp(observed), "target"])
-    if not math.isfinite(point) or point <= 0:
-        raise RuntimeError("Archived reference closing price is invalid.")
-    return (
-        point,
-        observed.isoformat(),
-        as_of.isoformat(),
-        f"{spec['target']}/{run_date}",
-    )
-
-
 def baseline(run_date, spec):
-    if run_date > _now().date():
-        raise RuntimeError("Cannot build a baseline for a future run day.")
-    saved = _snapshot_reference(run_date, spec)
-    if saved is not None:
-        point, last_observed, as_of, snapshot_path = saved
-        source = {
-            "name": "No-change reference",
-            "url": YAHOO,
-            "as_of": as_of,
-            "last_observed": last_observed,
-            "snapshot": snapshot_path,
-        }
-    else:
-        # A direct pre-cutoff check is allowed, but no historical reconstruction.
-        as_of = _guard(run_date, spec)
-        past = _daily(
-            date.fromisoformat(spec["x"]["history_start"]), run_date - timedelta(days=1)
-        )
-        point = float(past.iloc[-1])
-        _guard(run_date, spec)
-        source = {
-            "name": "No-change reference",
-            "url": YAHOO,
-            "as_of": as_of.isoformat(),
-            "last_observed": past.index[-1].date().isoformat(),
-        }
+    """No change from the run date's official close (published at 16:00 ET, before the
+    cutoff; on a Monday holiday, the previous session's), for every target date. Read from
+    Yahoo the day after the run date."""
+    source = {"name": "No-change reference: AAPL's official close on the run date", "url": YAHOO}
+    if _now() < _cutoff(run_date, spec):
+        return {"source": source, "forecasts": []}
+    point = float(_daily(run_date, run_date).iloc[0])
     return {
         "source": source,
         "forecasts": [
