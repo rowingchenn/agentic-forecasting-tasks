@@ -51,7 +51,7 @@ ITEMS = {
 MODEL = "National Gas NTS demand forecast"
 UK = ZoneInfo("Europe/London")  # National Gas's clock
 GAS_DAY_START = 5  # a gas day starts at 05:00 UK local time
-SCREEN = 1.25  # an actual counts if within this factor of the median forecast for its day
+SCREEN = 1.2  # an actual counts if within this factor of the median forecast for its day
 SETTLED_DAYS = 14  # versions of a gas day this old no longer change, so they are cached
 # The latest demand at a snapshot is normally two days before the run date (three or four
 # days on 11 run dates since 2022-10); older means the portal's answer was incomplete

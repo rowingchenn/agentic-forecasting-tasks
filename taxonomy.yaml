@@ -17,9 +17,6 @@ domains:
       - id: electricity-demand
         name: Electricity demand
         examples: [ERCOT daily peak load, PJM daily load, CAISO daily load]
-      - id: gas-demand
-        name: Gas demand
-        examples: [GB NTS gas demand, AEMO Victoria gas demand]
       - id: renewable-generation
         name: Renewable generation
         examples: [ERCOT daily wind output, CAISO daily solar output]

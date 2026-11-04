@@ -55,7 +55,7 @@ definition = """\
   LDZ offtakes, NTS shrinkage and interconnector exports."""
 settlement = """\
   First published value, normally posted at about 12:20 UK time the day after the gas \
-  day. A value counts only within a factor of 1.25 of the median of every Demand \
+  day. A value counts only within a factor of 1.2 of the median of every Demand \
   Forecast, NTS (PUBOB623) version for the gas day published before it, and as it is if \
   none was; this passes over the partial values the portal posts that morning and the \
   rare erroneous one. A value or version counts as published at the later of its \
@@ -82,9 +82,13 @@ name = "Demand history"
 columns = ["target"]
 what = """\
   The target itself, as first published by the rule it is settled on, every gas day \
-  published before the snapshot: up to two days before the run date, since the day \
-  before's comes out at about 12:20, during the run. A day without a value is filled in \
-  linearly."""
+  published before the snapshot. National Gas publishes a gas day's demand at about \
+  12:20 the next day, after the run starts at 11:10, so this history usually ends two \
+  days before the run date: the previous gas day's value comes out during the run, where \
+  the agents can find it before the cutoff but the TSFMs never get it. This is an \
+  accepted exception to the rule that the previous day's value is published by the \
+  start: a run that ends before National Gas's 13:00 forecast cannot start after 12:20. \
+  A day without a value is filled in linearly."""
 why = """\
   Demand is persistent and seasonal; the history carries its level, the weekly cycle and \
   how it moves with the seasons."""

@@ -14,7 +14,7 @@ offtakes to the regional distribution networks, NTS shrinkage and interconnector
 A forecast is settled on the first value National Gas publishes for the gas day, normally
 at about 12:20 UK time the day after it. The portal also posts partial values that
 morning (often 0 or about 20 mcm) and, rarely, erroneous values that are corrected later,
-so a value counts only if it lies within a factor of 1.25 of the median of every version of
+so a value counts only if it lies within a factor of 1.2 of the median of every version of
 National Gas's forecast for that gas day (*Demand Forecast, NTS*, PUBOB623) published
 before it; a value with no forecast version before it counts as it is. A value or version
 counts as published at the later of its two time stamps on the portal, *Applicable At* and
