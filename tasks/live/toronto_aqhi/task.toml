@@ -1,0 +1,137 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/toronto-aqhi-live"
+keywords = ["forecasting", "live", "environment"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/Toronto"
+AF_CUTOFF = "05:50"
+AF_HORIZONS = "[0, 1]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "toronto_aqhi"
+title = "Toronto daytime AQHI"
+question = """\
+  How high will Toronto's Air Quality Health Index get during the day today and \
+  tomorrow?"""
+taxonomy = "environment/air-quality"
+driver = "weather"
+domain = "Air quality"
+region = "Toronto, Ontario"
+unit = "AQHI"
+tradable = false
+summary = """\
+  The highest hourly Air Quality Health Index of the day in Toronto, as observed by \
+  Environment and Climate Change Canada (ECCC). The index combines ozone, nitrogen \
+  dioxide and fine particulate matter into a health-risk scale from 1 to 10+. Weather \
+  drives it, and wildfire smoke, ECCC's forecasts and air quality statements add \
+  information that history alone does not contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Maximum of ECCC's hourly observed AQHI for the community Toronto (FEUZB) over the \
+  hours stamped 07:00 to 18:00 local time (America/Toronto), ECCC's daytime forecast \
+  period of 06:00 to 18:00; values as published, with two decimals, and \"10+\" counted \
+  as 11. A day counts once at least 9 of its 12 hours have values."""
+settlement = """\
+  First published value: the hourly observations as posted in ECCC's realtime file the \
+  day after; ECCC's later backfill revisions are not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "ECCC MSC Datamart, AQHI observations for Toronto (FEUZB)"
+url = "https://dd.weather.gc.ca/today/air_quality/aqhi/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "04:05"
+every_days = 1
+first_run = "2026-10-29"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily, with the hourly observations it is derived from"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Hourly AQHI observations for the community (ECCC MSC Datamart)", "Every ECCC AQHI forecast issue for the community since history_start", "Daily weather forecast at the community (ECMWF IFS via Open-Meteo)"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "AQHI history"
+columns = ["target"]
+what = """\
+  The target itself, every day up to the day before the run date; the rare day with too \
+  few hours is filled in linearly from its neighbours."""
+why = """\
+  Air quality persists for a day or two with the weather pattern behind it, and the \
+  history carries the season's level."""
+source = "ECCC MSC Datamart"
+url = "https://dd.weather.gc.ca/today/air_quality/aqhi/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier ECCC AQHI forecast"
+columns = ["eccc"]
+expert = true
+what = """\
+  ECCC's forecast of each day's daytime maximum as a run could see it, normally from the \
+  evening issue of the day before: for past days, its \"Tomorrow\" period; for the \
+  forecast window, its \"Tomorrow\" and \"Day 3\" periods. The 06:00 forecast the run is \
+  compared with comes out after the cutoff and is not included."""
+why = """\
+  ECCC's forecasters combine air quality models, smoke forecasts and the weather \
+  pattern, which the history and local weather alone cannot see."""
+source = "ECCC MSC Datamart, AQHI forecasts for Toronto (FEUZB)"
+url = "https://dd.weather.gc.ca/today/air_quality/aqhi/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Weather at the community"
+columns = ["tmax", "precip", "wind_u", "wind_v", "radiation"]
+what = """\
+  Daily maximum temperature, precipitation, the day's strongest wind as eastward and \
+  northward components (from its speed and dominant direction) and solar radiation at \
+  the community: reanalysis for past days, the ECMWF forecast issued before the run for \
+  the forecast window."""
+why = """\
+  Heat and sunshine make ozone, calm air lets pollution build up, rain washes particles \
+  out, and the wind decides whose pollution and smoke arrive."""
+source = "Open-Meteo (ERA5 reanalysis, ECMWF IFS 0.25° forecast)"
+url = "https://open-meteo.com/en/docs/ecmwf-api"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow"]
+what = "Day of week."
+why = "Traffic, a source of nitrogen dioxide, is lighter on weekends."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "eccc-official"
+label = "ECCC official"
+name = "ECCC AQHI forecast"
+kind = "point"
+visible_to_agents = false
+method = """\
+  ECCC's 06:00 AQHI forecast for the community on the run date, the first issue after \
+  the cutoff, which the agents cannot see. Its \"Today\" period gives the run date and \
+  its \"Tomorrow\" period the day after; each is ECCC's forecast maximum for 06:00 to \
+  18:00, a whole number, with 10+ counted as 11. It is recorded the next day."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "ECCC MSC Datamart, AQHI forecasts for Toronto (FEUZB)"
+url = "https://dd.weather.gc.ca/today/air_quality/aqhi/"
