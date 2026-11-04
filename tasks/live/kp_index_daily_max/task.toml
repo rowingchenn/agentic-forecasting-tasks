@@ -56,7 +56,7 @@ definition = """\
   values are posted."""
 settlement = """\
   First published value: the day's eight values as SWPC's product shows them at about \
-  10:35 UTC the next day, when the pipeline reads it. A day not complete then is settled \
+  10:15 UTC the next day, when the pipeline reads it. A day not complete then is settled \
   at the first later daily reading, with any value the product never shows taken from \
   SWPC's Daily Space Weather Indices for that day. SWPC's later corrections and GFZ \
   Potsdam's official Kp are not used."""
@@ -66,7 +66,7 @@ name = "NOAA SWPC, Planetary K-index (noaa-planetary-k-index.json)"
 url = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "10:35"
+snapshot = "10:15"
 every_days = 1
 first_run = "2026-11-09"
 

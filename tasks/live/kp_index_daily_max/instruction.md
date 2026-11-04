@@ -1,5 +1,6 @@
 Forecast the daily maximum of the planetary Kp index of geomagnetic activity, as NOAA
-estimates it, for tomorrow and the day after. You have about 90 minutes.
+estimates it, for tomorrow and the day after (UTC days). The Task runs daily, and forecasts
+are due at 12:20 UTC on the run date. You have about 90 minutes.
 
 ## The target
 
@@ -10,7 +11,7 @@ Prediction Center (SWPC) publishes for that day in its product
 rows whose `time_tag`, the start of a three-hour block in UTC, falls on the target date (00:00
 through 21:00). Kp runs from 0 to 9 in thirds, which SWPC writes as decimals: 2- is 1.67, 2o
 is 2.00 and 2+ is 2.33. A day counts once all eight values are posted. A forecast is settled
-on the first published value: the eight values as SWPC's product shows them at about 10:35
+on the first published value: the eight values as SWPC's product shows them at about 10:15
 UTC the day after the target date. A day not complete then is settled at the first later
 daily reading, with any value the product never shows taken from SWPC's Daily Space Weather
 Indices for that day. SWPC's later corrections are not used. GFZ Potsdam's official Kp
