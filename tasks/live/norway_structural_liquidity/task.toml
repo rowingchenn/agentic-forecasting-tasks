@@ -1,0 +1,148 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/norway-structural-liquidity-live"
+keywords = ["forecasting", "live", "economy"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "Europe/Oslo"
+AF_CUTOFF = "11:55"
+AF_HORIZONS = "[1, 2, 3, 4, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "norway_structural_liquidity"
+title = "Norway structural liquidity"
+question = """\
+  How much structural liquidity will Norway's banking system have from Tuesday to Friday \
+  this week and on Monday next week?"""
+taxonomy = "economy/bank-liquidity"
+driver = "economic"
+domain = "Bank liquidity"
+region = "Norway"
+unit = "NOK million"
+tradable = false
+summary = """\
+  The reserves Norwegian banks hold at Norges Bank, the central bank, leaving out Norges \
+  Bank's own market operations. Norges Bank watches it to decide whether to add or drain \
+  liquidity, and the money market reads it for how tight funding is. Tax deadlines and \
+  government payments move it by tens of billions of kroner in a day; Norges Bank's \
+  foreign exchange transactions for the government and government borrowing move it too. \
+  Norges Bank's own forecast, its announcements and the tax and borrowing calendars add \
+  information that history alone does not contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Structural liquidity, series STAT_S of Norges Bank's dataflow LIQUIDITY_FORECAST: \
+  banks' overnight deposits at Norges Bank (central bank reserves) excluding the effect \
+  of Norges Bank's market operations, in NOK million, one value per calendar day. \
+  Weekends and holidays repeat the previous business day's value, and the value can be \
+  negative."""
+settlement = """\
+  First published value: Norges Bank publishes the values up to the day before with its \
+  liquidity forecast, normally every Monday and Thursday at 12:00 Oslo time; around \
+  holidays a release can move or be skipped, and occasionally an extra one comes out. \
+  The last one to four days of each year are never published and are not scored."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series STAT_S)"
+url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "09:45"
+every_days = 7
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Daily structural liquidity with the release it was taken from (Norges Bank)", "Norges Bank's forecast of each day as a run could see it, with the release it was taken from"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Structural liquidity history"
+columns = ["target"]
+what = """\
+  The target itself, every day up to the day before Norges Bank's latest release before \
+  the run date: normally through the Wednesday before, from Thursday's release. The last \
+  days of each year, which Norges Bank never publishes, are filled in linearly. Norges \
+  Bank publishes the actual values only with its forecast releases, and the run date's, \
+  with the values for Thursday to Sunday, comes out at 12:00, after the cutoff, so \
+  neither the agents nor the TSFMs have them. This is an accepted exception to the rule \
+  that the previous day's value is published by the start: Norges Bank publishes those \
+  values only with the release the run is compared with."""
+why = """\
+  The level carries over from day to day between payments, and the history shows how \
+  each kind of payment moved it in past months and years."""
+source = "Norges Bank"
+url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier Norges Bank forecast"
+columns = ["nb_forecast"]
+expert = true
+what = """\
+  Norges Bank's forecast of each day's structural liquidity as a run could see it, from \
+  its latest release before the run: for past days, the release before the Monday run \
+  that targeted the day; for Thursday to Sunday before the run date and the forecast \
+  window, the release before the run date, normally the previous Thursday's. The run \
+  date's 12:00 release the run is compared with comes after the cutoff and is not \
+  included. A day no release covers yet carries the day before's value."""
+why = """\
+  Norges Bank knows the government's large payments, its foreign exchange transactions \
+  and the borrowing calendar in advance, which the history and the regular payment days \
+  alone cannot see."""
+source = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series FCAST_S)"
+url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Payment calendar"
+columns = ["dow", "business_day", "tax_withholding", "tax_corporate", "tax_vat", "tax_petroleum", "pensions", "month_start"]
+what = """\
+  Day of week, Norwegian business days, and the government's regular payment days: the \
+  deadlines for withholding tax and employer contributions, companies' advance tax, VAT \
+  and petroleum tax, NAV's pension payments, and the first business day of each month. A \
+  deadline off a business day moves to the next business day and a payment by the \
+  government to the previous one, as Norges Bank describes."""
+why = """\
+  Taxes paid to the government drain reserves from the banks and government payments add \
+  them back, on dates known in advance; most of the largest daily moves fall on these \
+  days."""
+source = "computed from Norges Bank's description of its liquidity forecast"
+url = """\
+  https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/about-liquidity-forecast/"""
+
+[metadata.agentic-forecasting.baseline]
+system = "norges-bank-official"
+label = "Norges Bank official"
+name = "Norges Bank's structural liquidity forecast"
+kind = "point"
+method = """\
+  Norges Bank's forecast of structural liquidity from its release dated on the run date, \
+  published at 12:00, after the cutoff, which the agents cannot see. A forecast covers \
+  one calendar year, so target dates in the next year come from that year's forecast \
+  released on the run date. Without a release on the run date (Easter Monday, Whit \
+  Monday) there is no B that day; an earlier release, which the agents could see, is \
+  never used. Norges Bank keeps every release, and it is recorded the next day."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Norges Bank, liquidity forecast data (dataflow LIQUIDITY_FORECAST, series FCAST_S)"
+url = "https://www.norges-bank.no/en/topics/liquidity-and-markets/bank-liquidity/"

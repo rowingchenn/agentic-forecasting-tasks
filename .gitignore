@@ -9,7 +9,6 @@ dist/
 *.egg-info/
 
 # Materialised assets never belong in git
-tasks/**/image/assets/
-tasks/**/setup/assets/
-tasks/**/verify/assets/
-tasks/**/oracle/assets/
+tasks/**/environment/assets/
+tasks/**/tests/assets/
+tasks/**/solution/assets/
