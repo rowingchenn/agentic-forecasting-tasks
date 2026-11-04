@@ -1,0 +1,109 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/wikipedia-ai-pageviews-live"
+keywords = ["forecasting", "live", "attention"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "UTC"
+AF_CUTOFF = "13:45"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "wikipedia_ai_pageviews"
+title = "Wikipedia Artificial intelligence daily page views"
+question = """\
+  How many user-classified views will English Wikipedia's Artificial intelligence \
+  article receive on each of the next seven UTC days?"""
+taxonomy = "attention/search-and-page-views"
+driver = "behavioral"
+domain = "Online attention"
+region = "English Wikipedia, worldwide"
+unit = "views/day"
+tradable = false
+summary = """\
+  Daily views of the fixed Artificial_intelligence article on English Wikipedia, across \
+  all access methods, with Wikimedia's user agent classification. News, product \
+  announcements and public events can change attention to the topic."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  The integer views field for project en.wikipedia.org, access all-access, agent user, \
+  article Artificial_intelligence, granularity daily, for the UTC date. These are \
+  page-view events classified as user traffic, not unique visitors, searches, all-agent \
+  traffic or the sum of translated articles or redirects."""
+settlement = """\
+  First value observed and retained by the pipeline once the date is at least two \
+  calendar days before collection. Later source revisions do not overwrite it. This is \
+  not a claim to capture Wikimedia's first published version. Missing records are \
+  unavailable, not zero. The fixed title is not followed on rename."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Wikimedia Analytics API, per-article page views"
+url = """\
+  https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/reference/page-views.html"""
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:05"
+every_days = 1
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily UTC; at least one full day of publication allowance"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Daily page-view records for the exact project, access, agent and article filters"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Article view history"
+columns = ["target"]
+what = """\
+  Daily user-classified views of the fixed English Wikipedia article, through run_date \
+  minus two days, fetched and frozen at the run-day snapshot."""
+why = "History carries the level and weekday pattern of attention to the article."
+source = "Wikimedia Analytics API"
+url = """\
+  https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Artificial_intelligence/daily/"""
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "month"]
+what = "UTC weekday (Monday = 0) and month (1 through 12), including future dates."
+why = "Weekday and seasonal patterns can affect readership."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "wikipedia-ai-weekly-naive"
+label = "Weekly seasonal naive (statistical)"
+name = "Seven-day seasonal naive reference, not an official or expert forecast"
+kind = "point"
+method = """\
+  For each target date, subtract seven days repeatedly until the date is no later than \
+  last_observed, and use that observed count from frozen X_d. The publication allowance \
+  can require a 14-day lookback. Collection on the next day reads X_d, never newly \
+  downloaded history. This statistical reference is proposed as an exception to the \
+  official/expert baseline guideline, subject to maintainer review."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Frozen run-day Wikimedia page-view history"
+url = """\
+  https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Artificial_intelligence/daily/"""
