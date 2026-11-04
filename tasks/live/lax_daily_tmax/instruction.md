@@ -5,7 +5,7 @@ Airport (33.94° N, 118.40° W) for the next seven days. You have about 90 minut
 
 The target is Open-Meteo Historical Weather API's `temperature_2m_max`, with
 `models=era5`, latitude `33.94`, longitude `-118.40`, elevation `38` metres,
-`cell_selection=land`, and timezone `${timezone}`. It is the provider's local-calendar
+`cell_selection=land`, and timezone `America/Los_Angeles`. It is the provider's local-calendar
 daily maximum for its gridded, elevation-adjusted reanalysis series, NOT a measured
 LAX station maximum and NOT whichever temperature a forecast website later displays.
 
@@ -20,12 +20,12 @@ are never used as observed truth.
 
 ## Inputs and timing
 
-`/home/user/input/task.json` gives the run date, target dates (run date plus ${horizons}
-calendar days), cutoff (${cutoff} ${timezone} on the run date), and quantile levels
-${quantile_levels}. Forecast each entire target day, not only a daytime period.
+`/home/user/input/task.json` gives the run date, target dates (run date plus [1, 2, 3, 4, 5, 6, 7]
+calendar days), cutoff (10:00 America/Los_Angeles on the run date), and quantile levels
+[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]. Forecast each entire target day, not only a daytime period.
 Use information available before submission and never after the cutoff.
 
-${environment_note}
+You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 
 In live runs, you may consult any accessible weather service, model output, satellite
 or marine information, public news, or other relevant internet source, and choose your
@@ -36,8 +36,6 @@ provided inside the episode. Follow the offline restrictions above in mock repla
 The comparison baseline is ECMWF IFS 0.25° (`ecmwf_ifs025`) through Open-Meteo at the
 same requested location, elevation and timezone. Its native grid differs from ERA5.
 The task's target and settlement definition remain ERA5, regardless of sources used.
-
-${history_note}
 
 ## Output
 
@@ -61,4 +59,4 @@ Accuracy is evaluated after settlement with quantile CRPS, median absolute error
 
 ## Collected materials
 
-${materials_note}
+Save copies of the external materials you found useful for this forecast, such as data you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
