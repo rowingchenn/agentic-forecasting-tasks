@@ -125,6 +125,7 @@ system = "swpc-3day-forecast"
 label = "SWPC 3-day forecast"
 name = "NOAA SWPC 3-Day Forecast"
 kind = "point"
+visible_to_agents = false
 method = """\
   SWPC's 3-day forecast issued at 12:30 UTC on the run date, the first issue after the \
   cutoff, which the agents cannot see; it is read the next day from NCEI's archive, or \

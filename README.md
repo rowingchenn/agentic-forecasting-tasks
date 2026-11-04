@@ -51,7 +51,7 @@ tables last in the file.
 | `…schedule.snapshot` | when a run day starts, in `AF_TIMEZONE` |
 | `…schedule.every_days`, `first_run` | a run day every `every_days` days from `first_run`; truth is recorded daily regardless |
 | `…x` | X_d: the curated input the TSFMs receive. Each column group has `what` it is and `why` it should help, in plain words, plus its source; the website shows them as written. `expert = true` marks the earlier official forecast, which only the `*-expert` TSFMs get |
-| `…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read; `reference = true` for a tradable control's no-change price. Leave the table out when no public expert forecast exists |
+| `…baseline` | B: `system` id, `label`, the official or expert forecast and how it is read; `visible_to_agents`, whether the agents can see that issue during the run; `reference = true` for a tradable control's no-change price. Leave the table out when no public expert forecast exists |
 
 Write the schedule into `instruction.md` as well, in words; ALE no longer fills templates.
 Two paragraphs of the instruction are shared by every target and must stay verbatim,
@@ -68,38 +68,41 @@ page states the tuple and its timing rules formally. For an author they come dow
 steps, in this order:
 
 1. **y.** A daily or weekly series that an authority publishes continuously, settled on
-   its first published value. A weekly target date is the date that labels the week. Define it in `instruction.md` precisely enough for someone else to
-   recompute it: the report, the aggregation, the local day, and how many observations a
-   day needs to count.
+   its first published value; a weekly target date is the date that labels the week.
+   Define it in `instruction.md` precisely enough for someone else to recompute it: the
+   report, the aggregation, the local day, and how many observations a day needs to count.
 2. **B.** The public expert or official forecast of the same y, and the issue of it you
-   compare with: its first issue after the cutoff. Find when that issue has come out over
-   at least a year of history.
-3. **Cutoff (`AF_CUTOFF`).** A few minutes before the earliest release of that issue. The
-   NWS evening forecast for St. Louis came out at 18:45 at the earliest over 400 days, so
-   the cutoff is 18:40; ECCC issues its Toronto forecast at 06:00, so the cutoff is 05:50;
-   ERCOT posts a new version every hour, and the cutoff 09:25 makes the 09:30 version the
-   comparison. Agents then forecast from nearly the information B uses and never see it.
-4. **Start (`schedule.snapshot`).** Early enough before the cutoff for the agents' 90
-   minutes plus building and setting up the sandbox: 1 h 45 min to 2 h 20 min here.
-   The previous day's value must be published by then. If it comes out only after the
-   start but before the cutoff, the agents can still find it while the TSFMs' X_d ends a
-   day earlier; say so in the X description (GB gas demand, Norway's structural
-   liquidity). If it comes out after the cutoff, the target does not qualify with this B.
+   compare with. Find when it has come out over at least a year of history.
+3. **Start (`schedule.snapshot`).** After the latest target value is published; this is
+   the one hard rule. X_d is taken at the start too, so the agents and the TSFMs begin
+   from the same latest value.
+4. **Cutoff (`AF_CUTOFF`).** At least 1 h 45 min after the start, for the agents' 90
+   minutes plus building and setting up the sandbox, and before any observation of the
+   first target date. Where the schedule allows, put it a few minutes before B's issue and
+   compare with that first issue after the cutoff: the agents then forecast from nearly
+   the information B uses and never see it. The NWS evening forecast for St. Louis came
+   out at 18:45 at the earliest over 400 days, so the cutoff is 18:40; ECCC issues its
+   Toronto forecast at 06:00, so the cutoff is 05:50; ERCOT posts a new version every hour,
+   and the cutoff 09:25 makes the 09:30 version the comparison. Where B comes out soon
+   after the latest value, or in the same release, start after the value anyway and
+   compare with the issue the agents can see (National Gas's 13:01 forecast, Norges Bank's
+   Monday release). Either way, set `visible_to_agents` in the baseline table.
 5. **Horizons (`AF_HORIZONS`).** The dates B forecasts, counted from the run date: 1–7 for
    ERCOT's seven-day forecast, 1–13 for the NWS forecast, 0 and 1 for ECCC's Today and
    Tomorrow. Use 0 only when the run day's target period starts after the cutoff
    (Toronto's daytime maximum covers 07:00 to 18:00).
 6. **Quantiles (`AF_QUANTILE_LEVELS`).** 0.1 to 0.9, as every target uses, so that scores
    compare across tasks.
-7. **Run days (`schedule.every_days`).** Daily; the maintainer sets `first_run` when
-   enabling the timer.
+7. **Run days (`schedule.every_days`).** Daily or weekly; the maintainer sets `first_run`
+   when enabling the timer.
 8. **X.** The target history and the covariates you would give a forecaster, each as
-   published before the start. Include the latest issue of B before the start as a group
-   with `expert = true`.
+   published before the start. Include the previous cycle's issue of B (the one before
+   B's own) as a group with `expert = true`, never B's own issue, so that the `-expert`
+   TSFMs get the same kind of help on every target.
 
-Without an expert forecast, steps 3 and 4 reduce to two conditions: start after the
-previous day's value is published, and cut off before any observation of the first target
-date.
+Without an expert forecast, leave out the baseline table; steps 3 and 4 reduce to two
+conditions: start after the latest value is published, and cut off before any observation
+of the first target date.
 
 ### fetch.py
 
@@ -117,16 +120,13 @@ environment variables that the pipeline loads from its `.env`. It defines three 
   - `sources`: where each part came from; `covariate_notes`: what each column means.
 - `truth(today, spec)` returns a date-indexed `Series` of every value published so far.
 - `baseline(run_date, spec)` returns `{"source": {...}, "forecasts": [{"target_date":
-  ..., "point": ...}]}` (or `"quantiles"` instead of `"point"`) for the first version
-  published after the cutoff. The agents cannot see it, so they forecast from the same
-  information as the publisher. The pipeline calls it the day after the run day, so the
-  version must still be retrievable then; before it is published, `forecasts` is empty.
+  ..., "point": ...}]}` (or `"quantiles"` instead of `"point"`) for the issue the Task
+  compares with (step 4). The pipeline calls it every day for the run days of the past
+  week that lack it, so the issue must still be retrievable a few days later; before it
+  is published, `forecasts` is empty.
 
-Schedule a run day so that its snapshot comes after the latest target value is published,
-and its cutoff before both that version and any target value in the forecast window, as
-close to the version as the agents' 90 minutes allow. Earlier versions of the official
-forecast stay public. Where the publisher keeps them, give the TSFMs the latest one
-published before each snapshot as a covariate. Published history that never changes may be
+Earlier versions of the official forecast stay public. Where the publisher keeps them,
+give the TSFMs the previous cycle's issue as a covariate (step 8). Published history that never changes may be
 cached on the host under `~/.cache/agentic-forecasting/<target>/`, as ERCOT's past forecast
 versions are.
 

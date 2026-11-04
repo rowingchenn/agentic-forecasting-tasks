@@ -115,6 +115,7 @@ system = "ercot-official"
 label = "ERCOT official"
 name = "ERCOT official seven-day load forecast"
 kind = "point"
+visible_to_agents = false
 method = """\
   The forecast model ERCOT flags as in use, first version posted after the cutoff (the \
   09:30 version), which the agents cannot see; it is recorded the next day; the daily \

@@ -119,6 +119,7 @@ system = "nws-official"
 label = "NWS official"
 name = "NWS river stage forecast for St. Louis, North Central River Forecast Center"
 kind = "point"
+visible_to_agents = false
 method = """\
   The first river forecast the NWS issues for the gauge after the cutoff, normally its \
   evening forecast of the run date, which the agents cannot see; the mean of its four \

@@ -6,9 +6,9 @@ It needs only the standard library and pandas. The pipeline passes `spec`, the t
 definition from task.yaml (`extras.agentic-forecasting` plus `params`), and turns the
 results into archived files.
 
-    snapshot(run_date, spec)  X_d: structural liquidity history, Norges Bank's earlier
-                              forecast and the payment calendar, from releases before the
-                              run date
+    snapshot(run_date, spec)  X_d: structural liquidity history from the releases up to the
+                              run date's, Norges Bank's forecast from the release before it,
+                              and the payment calendar
     truth(today, spec)        every day's structural liquidity published so far
     baseline(run_date, spec)  Norges Bank's own forecast, its release at 12:00 on the run date
 
@@ -174,13 +174,13 @@ def releases(first_year: int, last_year: int) -> pd.DataFrame:
 def forecast_as_seen(
     rows: pd.DataFrame, index: pd.DatetimeIndex, run_date: date, last_observed: pd.Timestamp
 ) -> tuple[pd.Series, pd.DataFrame]:
-    """Norges Bank's forecast of each day on `index` as a run could see it: FCAST_S of the
-    latest release dated before the run. For a past day that is the Monday run that targeted
-    it (the Monday before a Tuesday to Sunday, the one a week earlier for a Monday), so
-    normally the Thursday release before that Monday; for the days after last_observed, this
-    run's, normally the Thursday release before the run date. A day no release covers yet (a
-    year's set first appears in mid-December, 2024's only on 2 January) carries the day
-    before's value, and the history's first days the first value. Also the rows used."""
+    """Norges Bank's forecast of each day on `index` from the release before B's: FCAST_S of
+    the latest release dated before the Monday run that targets the day (the Monday before a
+    Tuesday to Sunday, the one a week earlier for a Monday), normally the Thursday release
+    before it; for the days after last_observed, the latest release dated before this run
+    date. The run date's own release, B, never enters. A day no release covers yet (a year's
+    set first appears in mid-December, 2024's only on 2 January) carries the day before's
+    value, and the history's first days the first value. Also the rows used."""
     back = pd.to_timedelta((index.dayofweek - 1) % 7 + 1, unit="D")
     as_of = pd.Series(index - back, index=index, name="as_of")
     as_of[index > last_observed] = pd.Timestamp(run_date)
@@ -229,13 +229,15 @@ def calendar(index: pd.DatetimeIndex) -> pd.DataFrame:
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
-    """X_d from the releases dated before the run date: one row per day from history_start
-    to the last target date, `target` empty after the last published day, Norges Bank's
-    earlier forecast and the calendar known for the window. The run date's release comes
-    out at 12:00, after the cutoff, and is B, so it never enters X_d, even if the snapshot
-    is late or rebuilt."""
+    """X_d at the start, after the run date's 12:00 release: one row per day from
+    history_start to the last target date, `target` from the releases dated up to the run
+    date (normally through the Sunday before it; on a Monday without a release, through the
+    day before the previous one) and empty after the last published day, Norges Bank's
+    forecast from the release before the run date's and the calendar known for the window.
+    A later release never enters, even if the snapshot is late or rebuilt, and neither does
+    the forecast of the run date's release, which is B."""
     start = date.fromisoformat(spec["x"]["history_start"])
-    rows = actuals(start, run_date - timedelta(days=1), strict=True)
+    rows = actuals(start, run_date, strict=True)
     published = rows.set_index("date")["value"]
     end = run_date + timedelta(days=max(spec["horizons"]))
     index = pd.date_range(start, end, freq="D", name="timestamp")
@@ -270,13 +272,13 @@ def snapshot(run_date: date, spec: dict) -> dict:
         },
         "covariate_notes": {
             "target": "structural liquidity (NOK million) as in each year's latest release "
-            "before the run date; the last days of a year, never published, are filled "
-            "linearly",
+            "dated on or before the run date; the last days of a year, never published, are "
+            "filled linearly",
             "nb_forecast": "Norges Bank's forecast of structural liquidity (NOK million, "
-            "FCAST_S) from its latest release before a run: for past days the Monday run "
-            "that targeted the day, for the days after last_observed this run; a day no "
-            "release covers yet carries the day before's value (the history's first days, the "
-            "first value)",
+            "FCAST_S) from its latest release dated before a run date, never the run date's "
+            "own: for past days the Monday run that targeted the day, for the days after "
+            "last_observed this run; a day no release covers yet carries the day before's "
+            "value (the history's first days, the first value)",
             "dow": "day of week, Monday = 0",
             "business_day": "1 on Norwegian business days: not a weekend, a public holiday, "
             "24 or 31 December",
@@ -304,10 +306,10 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 def baseline(run_date: date, spec: dict) -> dict:
     """Norges Bank's own forecast: for each target date's year, FCAST_S of that year's
-    release dated on the run date, published at noon, after the cutoff. Without a release on
-    the run date (Easter Monday, Whit Monday) there is no B: an earlier release was public
-    during the run. Every release stays on the API, so a later call gives the same
-    numbers."""
+    release dated on the run date, published at noon, before the run starts, so the agents
+    can see it. Without a release on the run date (Easter Monday, Whit Monday) there is no
+    B: the earlier release is the TSFMs' expert covariate. Every release stays on the API,
+    so a later call gives the same numbers."""
     timezone = ZoneInfo(spec["schedule"]["timezone"])
     targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
     used: dict[str, str] = {}

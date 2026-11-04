@@ -1,5 +1,7 @@
 Forecast how much gas Great Britain's National Transmission System (NTS) will deliver in
-the next gas day. You have about 90 minutes.
+the next gas day. The run starts at 13:00 UK time on the run date, normally after the
+previous gas day's demand has been published, and the forecast is due at 14:45 UK time.
+You have about 90 minutes.
 
 ## The target
 
@@ -26,7 +28,7 @@ value.
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1] days), the submission cutoff (12:55 Europe/London on the run date), and the
+[1] days), the submission cutoff (14:45 Europe/London on the run date), and the
 quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.

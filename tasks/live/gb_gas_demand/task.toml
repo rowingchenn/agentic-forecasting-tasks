@@ -11,7 +11,7 @@ memory_mb = 8192
 
 [environment.env]
 AF_TIMEZONE = "Europe/London"
-AF_CUTOFF = "12:55"
+AF_CUTOFF = "14:45"
 AF_HORIZONS = "[1]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
@@ -67,7 +67,7 @@ name = "National Gas Data Portal, Demand Actual, NTS, D+1 (PUBOB637)"
 url = "https://data.nationalgas.com/find-gas-data"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "11:10"
+snapshot = "13:00"
 every_days = 1
 first_run = "2026-11-05"
 
@@ -83,12 +83,9 @@ columns = ["target"]
 what = """\
   The target itself, as first published by the rule it is settled on, every gas day \
   published before the snapshot. National Gas publishes a gas day's demand at about \
-  12:20 the next day, after the run starts at 11:10, so this history usually ends two \
-  days before the run date: the previous gas day's value comes out during the run, where \
-  the agents can find it before the cutoff but the TSFMs never get it. This is an \
-  accepted exception to the rule that the previous day's value is published by the \
-  start: a run that ends before National Gas's 13:00 forecast cannot start after 12:20. \
-  A day without a value is filled in linearly."""
+  12:20 the next day, before the run starts at 13:00, so this history normally ends the \
+  day before the run date; on the run dates the value comes later (about one in 25), it \
+  ends a day or more earlier. A day without a value is filled in linearly."""
 why = """\
   Demand is persistent and seasonal; the history carries its level, the weekly cycle and \
   how it moves with the seasons."""
@@ -100,14 +97,11 @@ name = "Earlier National Gas forecast"
 columns = ["ng_forecast"]
 expert = true
 what = """\
-  National Gas's forecast of each gas day's demand as a run could see it: the latest \
-  published before a snapshot, of its Demand Forecast, NTS versions (from 13:00 the day \
-  before the gas day) and its two-day-ahead forecast (D-2, posted in the afternoon two \
-  days before). For past gas days that is the snapshot of the morning before, so the D-2 \
-  forecast; for the forecast window, this run's: the last update for the gas day before \
-  the run date (made about midnight), the morning update for the run date's (about \
-  10:00) and the target's D-2 forecast. The 13:00 version the run is compared with comes \
-  after the cutoff and is not included."""
+  National Gas's forecast of each gas day's demand from the cycle before the one the run \
+  is compared with: the latest version published before the day of the run that targets \
+  the gas day, which is its two-day-ahead forecast (D-2), posted two days before the gas \
+  day. It is the same for past gas days and the forecast window; the 13:00 day-ahead \
+  forecast of the run date, which the run is compared with, is never included."""
 why = """\
   National Gas's models combine weather forecasts with shippers' nominations and what \
   its control room knows about power stations, storage and interconnectors, which the \
@@ -145,11 +139,12 @@ system = "national-gas-forecast"
 label = "National Gas forecast"
 name = "National Gas day-ahead NTS demand forecast"
 kind = "point"
+visible_to_agents = true
 method = """\
-  National Gas's forecast of NTS demand for the gas day after the run date: the version \
-  published first within three hours after the cutoff, the 13:00 day-ahead forecast \
-  (published at about 13:10), which the agents cannot see, as re-issued by the next \
-  morning's snapshot. The 16:00 version, which usually repeats it, is never used; \
+  National Gas's forecast of NTS demand for the gas day after the run date: its 13:00 \
+  day-ahead forecast (stamped 13:01, published at about 13:10), as re-issued by the next \
+  day's snapshot. It comes out after the run starts and before the cutoff, so the agents \
+  can see it during the run. The 16:00 version, which usually repeats it, is never used; \
   without a 13:00 version there is no B that day. National Gas keeps every version, and \
   it is recorded the next day."""
 
