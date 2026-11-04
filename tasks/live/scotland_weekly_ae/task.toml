@@ -12,7 +12,7 @@ memory_mb = 8192
 [environment.env]
 AF_TIMEZONE = "Europe/London"
 AF_CUTOFF = "18:45"
-AF_HORIZONS = "[6]"
+AF_HORIZONS = "[7, 14]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
 [agent]
@@ -33,7 +33,7 @@ target = "scotland_weekly_ae"
 title = "Scotland weekly unplanned emergency-department attendances"
 question = """\
   How many unplanned attendances will Scotland's reporting Type 1 emergency departments \
-  record in the upcoming Sunday-ending week?"""
+  record in each of the next two Monday-to-Sunday weeks?"""
 taxonomy = "health/health-care-use"
 driver = "behavioral"
 domain = "General health-care use"
@@ -52,15 +52,10 @@ definition = """\
   For each Sunday WeekEndingDate, sum NumberOfAttendancesEpisode with Country S92000003, \
   DepartmentType Type 1 and AttendanceCategory Unplanned across distinct \
   TreatmentLocation sites in the Public Health Scotland weekly activity CSV. Do not add \
-  All or New Planned rows, percentages or other departments to the count."""
+  All or New planned rows, percentages or other departments to the count."""
 settlement = """\
-  First eligible published weekly total observed and retained by the pipeline after the \
-  week ends. Later revisions do not overwrite settled counts; this is not a claim to \
-  capture the publisher's first version. Use the source release as available at \
-  collection. Duplicate site-week keys, missing counts, missing weeks or changes to the \
-  fixed 30-site panel cause failure pending review, not invented values. Weekly totals \
-  are never divided into or repeated as daily observations. Source: Public Health \
-  Scotland; sums and forecasts are derived; UK Open Government Licence."""
+  The weekly total as first published by Public Health Scotland, normally on the Tuesday \
+  nine days after the week ends; later revisions are not used."""
 
 [metadata.agentic-forecasting.y.source]
 name = "Public Health Scotland, Weekly A&E Activity and Waiting Times"
@@ -68,9 +63,9 @@ url = """\
   https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times"""
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "17:05"
+snapshot = "16:45"
 every_days = 7
-first_run = "2026-11-09"
+first_run = "2026-11-15"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-07"
@@ -82,8 +77,9 @@ raw = ["Filtered hospital-week unplanned Type 1 attendance rows used to construc
 name = "Weekly attendance history"
 columns = ["target"]
 what = """\
-  Weekly totals through the latest released Sunday as retrieved before cutoff, with the \
-  publication lag retained and no fabricated intervening weeks."""
+  Weekly totals through the latest week PHS has published at the snapshot, normally the \
+  week ending 14 days before the run date; the unpublished weeks after it are left \
+  empty, not filled in."""
 why = "Recent activity and earlier years carry level, trend and annual seasonality."
 source = "Public Health Scotland weekly A&E open data (UK OGL)"
 url = """\
@@ -91,24 +87,11 @@ url = """\
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Calendar"
-columns = ["iso_week", "month"]
-what = "ISO week number and month of each Sunday-ending week, including future weeks."
-why = "Annual calendar position can explain seasonal changes in attendance."
+columns = ["iso_week", "month", "festive"]
+what = """\
+  ISO week number and month of each Sunday-ending week, and how many of its days are \
+  Christmas Day, Boxing Day, 1 or 2 January, including future weeks."""
+why = """\
+  Attendance follows the season, and falls most in the Christmas and New Year weeks."""
 source = "computed"
 
-[metadata.agentic-forecasting.baseline]
-system = "scotland-ae-seasonal-52"
-label = "52-week seasonal naive (statistical)"
-name = "Annual seasonal reference, not an official or expert health-care forecast"
-kind = "point"
-method = """\
-  Each target Sunday's total from exactly 52 weeks (364 days) earlier in frozen X_d. \
-  This is a 52-week lag, not an ISO week-number match in 53-week years. Next-day \
-  collection uses hash-checked pre-cutoff X_d, never later source revisions. The \
-  statistical baseline is proposed as an exception to the official/expert guideline, \
-  subject to maintainer acceptance."""
-
-[metadata.agentic-forecasting.baseline.source]
-name = "Frozen run-day PHS weekly attendance history"
-url = """\
-  https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times"""

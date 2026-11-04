@@ -1,4 +1,5 @@
-"""Host-only PHS weekly A&E data, first-retained truth and frozen annual reference.
+"""Host-only PHS weekly A&E data: X_d and first-published truth. There is no official or
+expert forecast of this series, so there is no B.
 
 Public Health Scotland, UK Open Government Licence. Aggregation and forecasts are
 our transformations, not PHS forecasts or endorsement. No API key is required.
@@ -10,17 +11,17 @@ import json
 import math
 import time
 from datetime import date, datetime, time as clock, timedelta
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 import pandas as pd
 
 CATALOGUE = "https://www.opendata.nhs.scot/api/3/action/package_show?id=weekly-accident-and-emergency-activity-and-waiting-times"
-PAGE = "https://www.opendata.nhs.scot/dataset/weekly-accident-and-emergency-activity-and-waiting-times"
 ZONE = ZoneInfo("Europe/London")
 # Fixed reporting panel present throughout the selected history, rather than a changing sum.
 SITES = frozenset("A111H A210H B120H C121H C313H C418H F704H G107H G405H G513H H103H H202H H212H L106H L302H L308H N101H N121H N411H R103H S308H S314H S319H T101H T202H V217H W107H Y144H Y146H Z102H".split())
+# Scotland's bank holidays at Christmas and New Year, when attendances fall most.
+FESTIVE = {(12, 25), (12, 26), (1, 1), (1, 2)}
 COLUMNS = ["WeekEndingDate", "Country", "HBT", "TreatmentLocation", "DepartmentType",
            "AttendanceCategory", "NumberOfAttendancesEpisode"]
 
@@ -37,8 +38,8 @@ def _cutoff(run_date, spec):
 
 def _guard(run_date, spec):
     now = _now()
-    if now.date() != run_date or now >= _cutoff(run_date, spec) or run_date.weekday() != 0:
-        raise RuntimeError("Fresh snapshots require the current Monday before cutoff.")
+    if now.date() != run_date or now >= _cutoff(run_date, spec) or run_date.weekday() != 6:
+        raise RuntimeError("Fresh snapshots require the current Sunday before cutoff.")
     return now
 
 
@@ -115,72 +116,34 @@ def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
     history, raw, source = _weekly(run_date, spec)
     last = history.index[-1].date()
-    # Monday runs normally have a latest released week from 15 days earlier.
-    if last < run_date - timedelta(days=15):
+    # PHS releases on Tuesdays the week that ended nine days earlier, so a Sunday run normally
+    # has the week ending 14 days before it. 28 days lets a skipped or late release (Christmas)
+    # through with a week-older history instead of losing the run day.
+    if last < run_date - timedelta(days=28):
         raise RuntimeError("PHS release is older than the expected reporting-lag allowance.")
     _guard(run_date, spec)
     targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
     if any(d.weekday() != 6 for d in targets):
         raise ValueError("Forecast targets must be Sunday week-ending dates.")
     index = pd.date_range(spec["x"]["history_start"], max(targets), freq="W-SUN", name="timestamp")
+    festive = [sum((d.month, d.day) in FESTIVE for d in pd.date_range(end - pd.Timedelta(days=6), end))
+               for end in index]
     return {"series": pd.DataFrame({"target": history.reindex(index),
                                    "iso_week": index.isocalendar().week.to_numpy(dtype=int),
-                                   "month": index.month}, index=index),
+                                   "month": index.month, "festive": festive}, index=index),
             "last_observed": last, "raw": {"phs_hospital_weeks.csv": raw},
             "sources": {"attendances": source, "as_of": as_of.isoformat()},
             "covariate_notes": {"iso_week": "ISO week number of Sunday; may be 53.",
-                                "month": "Month of the Sunday week-ending date."}}
+                                "month": "Month of the Sunday week-ending date.",
+                                "festive": "Days of the week that are Christmas Day, Boxing Day, 1 or 2 January."}}
 
 
 def truth(today: date, spec: dict) -> pd.Series:
     if today > _now().date():
         raise RuntimeError("Cannot settle future dates.")
-    # Pipeline update_truth preserves the first retained value for each published week.
+    # update_truth keeps the first published value of each week; later revisions are not used.
     return _weekly(today, spec)[0]
 
 
-def _reference(run_date, spec):
-    root = (Path(__file__).resolve().parents[3] / "mock" / spec["target"] / str(run_date)
-            / "oracle" / "assets" / "x")
-    if not root.exists():
-        result = snapshot(run_date, spec)  # current pre-cutoff smoke test only
-        return result["series"]["target"], result["last_observed"], result["sources"]["as_of"], None
-    manifest = json.loads((root / "MANIFEST.json").read_text())
-    for name in ("task.json", "series.csv"):
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != manifest["files"].get(name):
-            raise ValueError(f"Archived {name} fails its hash.")
-    task = json.loads((root / "task.json").read_text())
-    last = date.fromisoformat(task["last_observed"])
-    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
-    if (task["run_date"] != str(run_date) or task["task"] != spec["target"]
-            or manifest["snapshot"] != f"{spec['target']}/{run_date}"
-            or last.weekday() != 6 or not run_date - timedelta(days=15) <= last < run_date
-            or as_of.tzinfo is None or as_of.astimezone(ZONE).date() != run_date
-            or as_of >= _cutoff(run_date, spec)):
-        raise ValueError("Invalid pre-cutoff run-day snapshot.")
-    history = pd.read_csv(root / "series.csv", index_col="timestamp", parse_dates=True)["target"]
-    return history, last, as_of.isoformat(), manifest["snapshot"]
-
-
 def baseline(run_date: date, spec: dict) -> dict:
-    if run_date > _now().date() or run_date.weekday() != 0:
-        raise RuntimeError("Reference requires a current or archived Monday run.")
-    history, last, as_of, frozen = _reference(run_date, spec)
-    past = history.loc[:str(last)]
-    expected = pd.date_range(spec["x"]["history_start"], last, freq="W-SUN")
-    if not past.index.equals(expected) or past.isna().any():
-        raise ValueError("Incomplete frozen weekly history.")
-    forecasts = []
-    for horizon in spec["horizons"]:
-        target = run_date + timedelta(days=horizon)
-        anchor = target - timedelta(weeks=52)
-        if target.weekday() != 6 or anchor > last:
-            raise ValueError("Invalid annual anchor or target date.")
-        point = float(past.loc[pd.Timestamp(anchor)])
-        if not math.isfinite(point) or point < 0 or not point.is_integer():
-            raise ValueError("Invalid annual attendance anchor.")
-        forecasts.append({"target_date": str(target), "point": point})
-    return {"source": {"name": "52-week seasonal naive (statistical, not expert)", "url": PAGE,
-                       "as_of": as_of, "snapshot": frozen, "last_observed": str(last),
-                       "lag_weeks": 52, "attribution": "Public Health Scotland; derived forecast, UK OGL."},
-            "forecasts": forecasts}
+    return {"source": {"name": "none: no official or expert forecast of this series"}, "forecasts": []}
