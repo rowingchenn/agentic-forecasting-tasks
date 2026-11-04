@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 # The agent gets the day's schedule and nothing else: task.json with the run date, target
-# dates, cutoff and quantile levels, from the clock and the Task's params. fetch.py beside
-# this file is the pipeline's host-side code; the agent must not read it, so this stage
-# directory ends up root-only (ALE uploads it world-readable).
+# dates, cutoff and quantile levels, from the clock and the AF_* variables of task.toml.
 set -euo pipefail
 
 # A continuing episode (ale run --continue-from) runs in the sandbox an earlier run day
@@ -18,23 +16,23 @@ if [ -f /home/user/input/task.json ] && [ -n "$(ls -A /home/user/output 2>/dev/n
 fi
 
 mkdir -p /home/user/input
-python3 - "$ALE_PARAMS_JSON" > /home/user/input/task.json <<'PY'
+python3 > /home/user/input/task.json <<'PY'
 import json
-import sys
+import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-params = json.load(open(sys.argv[1]))
-zone = ZoneInfo(params["timezone"])
+zone = ZoneInfo(os.environ["AF_TIMEZONE"])
 day = datetime.now(zone).date()
-hour, minute = map(int, params["cutoff"].split(":"))
+hour, minute = map(int, os.environ["AF_CUTOFF"].split(":"))
 task = {
     "run_date": day.isoformat(),
     "cutoff": datetime(day.year, day.month, day.day, hour, minute, tzinfo=zone).isoformat(),
-    "target_dates": [(day + timedelta(days=h)).isoformat() for h in params["horizons"]],
-    "quantile_levels": params["quantile_levels"],
+    "target_dates": [
+        (day + timedelta(days=h)).isoformat() for h in json.loads(os.environ["AF_HORIZONS"])
+    ],
+    "quantile_levels": json.loads(os.environ["AF_QUANTILE_LEVELS"]),
 }
 print(json.dumps(task, indent=2))
 PY
 chmod 0644 /home/user/input/task.json
-chmod -R go-rwx "$ALE_STAGE_DIR"
