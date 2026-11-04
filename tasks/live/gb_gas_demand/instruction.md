@@ -26,12 +26,10 @@ value.
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
-quantile levels ${quantile_levels}.
+[1] days), the submission cutoff (12:55 Europe/London on the run date), and the
+quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
-${environment_note}
-
-${history_note}
+You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 
 ## Output
 
@@ -60,4 +58,4 @@ spread matter.
 
 ## Collected materials
 
-${materials_note}
+Save copies of the external materials you found useful for this forecast, such as data you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
