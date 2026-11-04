@@ -1,0 +1,141 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/kp-index-daily-max-live"
+keywords = ["forecasting", "live", "space"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "UTC"
+AF_CUTOFF = "12:20"
+AF_HORIZONS = "[1, 2]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "kp_index_daily_max"
+title = "Planetary Kp index, daily maximum"
+question = """\
+  How high will the planetary Kp index of geomagnetic activity reach tomorrow and the \
+  day after (UTC)?"""
+taxonomy = "space/space-weather"
+driver = "solar"
+domain = "Space weather"
+region = "Global (planetary index)"
+unit = "Kp"
+tradable = false
+summary = """\
+  The highest of the day's eight three-hourly values of the planetary K index (Kp), the \
+  0 to 9 scale of geomagnetic disturbance behind NOAA's geomagnetic storm warnings, as \
+  NOAA's Space Weather Prediction Center (SWPC) estimates it in near real time. Solar \
+  wind streams and coronal mass ejections drive it, and solar images, solar wind \
+  measurements and forecasters' discussions add information that history alone does not \
+  contain. It is compared with SWPC's 3-day forecast."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Maximum over the UTC day of the eight three-hourly estimated planetary Kp values \
+  (blocks starting at 00, 03, ..., 21 UTC) in NOAA SWPC's Planetary K-index product, in \
+  thirds written as decimals (1.67 for 2-, 2.33 for 2+). A day counts once all eight \
+  values are posted."""
+settlement = """\
+  First published value: the day's eight values as SWPC's product shows them at about \
+  10:35 UTC the next day, when the pipeline reads it. A day not complete then is settled \
+  at the first later daily reading, with any value the product never shows taken from \
+  SWPC's Daily Space Weather Indices for that day. SWPC's later corrections and GFZ \
+  Potsdam's official Kp are not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "NOAA SWPC, Planetary K-index (noaa-planetary-k-index.json)"
+url = "https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "10:35"
+every_days = 1
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily (UTC days), with the three-hourly values it is derived from"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Three-hourly estimated planetary Kp (SWPC's Kp product for the last seven days, SWPC's Daily Space Weather Indices before)", "The three-hourly Kp breakdown of every SWPC 3-day forecast issue the series uses, with each day's maximum"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Kp history"
+columns = ["target"]
+what = """\
+  The target itself, every UTC day up to the day before the run date: the last seven \
+  days from SWPC's Kp product as published at the snapshot, older days from SWPC's Daily \
+  Space Weather Indices, which carry the same estimated values and which NCEI archives. \
+  A missing day is filled linearly."""
+why = """\
+  Disturbed conditions last a few days, and the fast solar wind from coronal holes \
+  returns with the Sun's 27-day rotation, so the history carries both the current level \
+  and what came one rotation ago."""
+source = "NOAA SWPC (Kp product; Daily Space Weather Indices, NCEI archive)"
+url = """\
+  https://www.ngdc.noaa.gov/stp/space-weather/swpc-products/daily_reports/space_weather_indices/"""
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier SWPC 3-day forecast"
+columns = ["swpc"]
+expert = true
+what = """\
+  The maximum of SWPC's three-hourly Kp forecast for each day as a run could see it: for \
+  past days, from the latest issue published before the day began, normally 12:30 UTC \
+  the day before (one day ahead); for the forecast window, from the latest issue before \
+  the snapshot, normally 00:30 UTC on the run date, which covers the run date and the \
+  two target dates. The 12:30 issue the run is compared with comes after the cutoff and \
+  is not included. Past days no issue covered (gaps in NCEI's archive, mostly in 2024) \
+  carry the day before's maximum."""
+why = """\
+  SWPC's forecasters watch the Sun, coronal mass ejections on their way and the solar \
+  wind upstream of Earth, which the history alone cannot see."""
+source = "NOAA SWPC 3-Day Forecast (NCEI archive; SWPC's live file)"
+url = """\
+  https://www.ngdc.noaa.gov/stp/space-weather/swpc-products/daily_reports/3day_forecast/"""
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["doy"]
+what = "Day of the year."
+why = """\
+  Geomagnetic activity is higher around the equinoxes, when Earth's magnetic field \
+  couples best with the solar wind's."""
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "swpc-3day-forecast"
+label = "SWPC 3-day forecast"
+name = "NOAA SWPC 3-Day Forecast"
+kind = "point"
+method = """\
+  SWPC's 3-day forecast issued at 12:30 UTC on the run date, the first issue after the \
+  cutoff, which the agents cannot see; it is read the next day from NCEI's archive, or \
+  from SWPC's FTP server if NCEI does not have it yet. Its \"NOAA Kp index breakdown\" \
+  gives eight three-hourly Kp values for each of three UTC days, and B for a target date \
+  is the maximum of that day's eight. If an issue comes out between the snapshot and the \
+  cutoff, the agents could see it, and B is left empty. B is still mostly visible: the \
+  issue before it, at 00:30 UTC, is public before the cutoff and gave the same daily \
+  maximum as B on 91% of run dates at horizon 1 and 86% at horizon 2 over the year to \
+  October 2026."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "NOAA SWPC 3-Day Forecast (NCEI archive)"
+url = "https://www.swpc.noaa.gov/products/3-day-forecast"
