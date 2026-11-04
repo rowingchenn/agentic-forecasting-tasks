@@ -1,28 +1,31 @@
-Forecast Anthropic's share of all spend on Vercel's AI Gateway for one day: the UTC day after
-the run date. You have about 90 minutes.
+Forecast Anthropic's share of all spend on Vercel's AI Gateway for each of the seven UTC days
+after the run date. You have about 90 minutes.
 
 ## The target
 
-The target date is a UTC day, from 00:00 to 24:00 UTC; the one after the run date starts at
-19:00 Eastern Standard Time (20:00 Eastern Daylight Time) on the run date. The target is
-Anthropic's share, in percent, of all spend through Vercel's AI Gateway on that day, as
-Vercel's AI Gateway leaderboard of labs publishes it on its Spend chart, "Share of AI Gateway
-spend across the top labs" (https://vercel.com/ai-gateway/leaderboards/labs). Its exact value
-is in Vercel's open-data export of the leaderboard,
+Each target date is a UTC day, from 00:00 to 24:00 UTC; the first, the day after the run date,
+starts at 19:00 Eastern Standard Time (20:00 Eastern Daylight Time) on the run date, after the
+cutoff. The target is Anthropic's share, in percent, of all spend through Vercel's AI Gateway
+on that day, as Vercel's AI Gateway leaderboard of labs publishes it on its Spend chart,
+"Share of AI Gateway spend across the top labs" (https://vercel.com/ai-gateway/leaderboards/labs).
+Its exact value is in Vercel's open-data export of the leaderboard,
 https://vercel.com/api/ai/leaderboard-export?dataset=labs&modality=all&format=json, documented
 at https://vercel.com/docs/ai-gateway/leaderboards: the field `share_percent` of the row whose
 `date` is the target date, `name` is `anthropic` and `metric` is `spend`, for example 31.7541.
-Every lab's share of the day is listed there, and they sum to 100. A forecast is settled on
-the first value the export shows for the date once a full day has passed since the date
-ended; later changes are not used. The export's latest row is the current, incomplete day.
-Shares of tokens or requests, other modalities (such as `text`), other labs and individual
-models measure different quantities.
+Every lab's share of the day is listed there, and they sum to 100. Vercel documents neither
+what its spend measures nor the time zone of its days; that they are UTC days is inferred, not
+documented. The export's latest row is the current, incomplete day. A forecast is settled on
+the first value recorded for the date: the export's value read once a full day has passed
+since the date ended, normally at 16:45 Eastern time two days after the date. Vercel changes
+past values slightly afterwards; later changes are not used. Shares of tokens or requests,
+other modalities (such as `text`), other labs and individual models measure different
+quantities.
 
 ## Inputs and environment
 
-`/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1] days), the submission cutoff (18:30 America/New_York on the run date), and the
-quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
+There is a run day every day. `/home/user/input/task.json` gives the run date, the target
+dates (the run date plus [1, 2, 3, 4, 5, 6, 7] days), the submission cutoff (18:30
+America/New_York on the run date), and the quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 

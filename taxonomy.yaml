@@ -114,9 +114,6 @@ domains:
       - id: media-and-social
         name: Media and social activity
         examples: [News article volume, GitHub stars]
-      - id: ai-usage
-        name: AI usage
-        examples: [Vercel AI Gateway lab spend shares]
 
 facets:
   driver:

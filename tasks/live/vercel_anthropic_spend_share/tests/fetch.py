@@ -1,25 +1,27 @@
 """Anthropic's share of Vercel AI Gateway spend: where the numbers for this target come from.
 
-The agentic-forecasting pipeline imports this file on the host, outside every episode; the
-sandbox's setup stage never runs it, and setup/run.sh makes it unreadable to the agent.
-It needs only the standard library and pandas. The pipeline passes `spec`, the target
-definition from task.yaml (`extras.agentic-forecasting` plus `params`), and turns the
-results into archived files.
+The agentic-forecasting pipeline imports this file on the host, outside every episode; ALE
+uploads tests/ only to verify, after the agent has finished. It needs only the standard
+library and pandas. The pipeline passes `spec`, [metadata.agentic-forecasting] of task.toml
+with the AF_* schedule merged in, and turns the results into archived files.
 
     snapshot(run_date, spec)  X_d: Anthropic's daily share of spend up to the last complete
-                              UTC day, and the day of the week
+                              UTC day, the day of the week, and Kalshi's market median one
+                              cycle before B's
     truth(today, spec)        every day's share once a full day has passed since it ended
-    baseline(run_date, spec)  the median of Kalshi's KXANTHVSPEND market on the target date
-                              as it stood at the cutoff, read the next day
+    baseline(run_date, spec)  the median of Kalshi's KXANTHVSPEND market on each target date
+                              that has one, as it stood at the cutoff, read the next day
 
-The leaderboard's days are UTC days. Vercel's export endpoint serves every day from
-2025-10-01 by date range, and its latest row is the current, incomplete day. It caches each
-answer for up to 24 hours, so a day counts only once the answer was built (when it was
-retrieved, less the Age its cache reports) long enough after the day ended. The range asked
-for ends on the run date: no agent of the previous run day asks for that URL, which names a
-date still to come for it, so its answer cannot be the one served. Kalshi lists an event for
-even calendar dates only. No credentials: both sources are keyless. Every request names this
-pipeline as its User-Agent and comes at least REQUEST_PAUSE seconds after the last.
+The leaderboard's days are taken to be UTC days; Vercel does not document them. Vercel's
+export endpoint serves every day from 2025-10-01 by date range, and its latest row is the
+current, incomplete day. It caches each answer for up to 24 hours, so a day counts only once
+the answer was built (when it was retrieved, less the Age its cache reports) long enough
+after the day ended. The range asked for ends on the run date: no agent of the previous run
+day asks for that URL, which names a date still to come for it, so its answer cannot be the
+one served. Kalshi lists an event for even calendar dates only. A reading of its market at a
+past moment never changes, so each is kept on the host once taken. No credentials: both
+sources are keyless. Every request names this pipeline as its User-Agent and comes at least
+REQUEST_PAUSE seconds after the last.
 """
 
 from __future__ import annotations
@@ -218,11 +220,12 @@ def _stored() -> tuple[pd.DataFrame, str] | None:
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
-    """X_d as published right now: one row per UTC day from history_start to the target date,
-    `target` empty after the last day the export holds complete (normally the day before the
-    run date), the day of the week for every day. If the export cannot be read, the host's
-    copy from the last snapshot stands in, and sources.vercel.error and a warning say so:
-    data that only the TSFMs see must not cost the agents' run day."""
+    """X_d as published right now: one row per UTC day from history_start to the last target
+    date, `target` empty after the last day the export holds complete (normally the day before
+    the run date), the day of the week for every day, and Kalshi's earlier median (see
+    kalshi_as_seen). If the export cannot be read, the host's copy from the last snapshot
+    stands in; if Kalshi cannot be read, X_d has no Kalshi column. sources and a warning say
+    so: data that only the TSFMs see must not cost the agents' run day."""
     start = date.fromisoformat(spec["x"]["history_start"])
     last_target = run_date + timedelta(days=max(spec["horizons"]))
     before_run = pd.Timestamp(run_date)
@@ -252,10 +255,44 @@ def snapshot(run_date: date, spec: dict) -> dict:
     target = values.reindex(index).interpolate(limit_area="inside")
     series = pd.DataFrame({"target": target, "dow": index.dayofweek}, index=index)
     used = spend[(spend["date"] >= pd.Timestamp(start)) & (spend["date"] <= last_observed)]
+    raw = {"vercel_labs_spend.csv": used[COLUMNS].reset_index(drop=True)}
+    notes = {
+        "target": "Anthropic's share, in percent, of all AI Gateway spend on the UTC day, "
+        "from the labs leaderboard (spend) in Vercel's open-data export, for every day that "
+        "had ended at least 12 hours before Vercel built the answer. A day missing between "
+        "two such days is filled linearly",
+        "dow": "day of the week of the UTC day, Monday = 0",
+    }
+    kalshi_source = {"url": f"{KALSHI}/markets?series_ticker={SERIES}"}
+    try:
+        kalshi, taken = kalshi_as_seen(index, target, last_observed, run_date, spec)
+        kalshi_source["readings"] = len(taken)
+    except FAILURES as exc:
+        kalshi = None
+        kalshi_source["error"] = f"Kalshi not read, X_d has no Kalshi column: {exc!r}"
+        print(f"warning: {kalshi_source['error']}", file=sys.stderr)
+    if kalshi is not None:
+        series["kalshi"] = kalshi
+        raw["kalshi_quotes.csv"] = pd.DataFrame(
+            [
+                {"target_date": r["target_date"], "read_at": r["read_at"], "median": r["point"]}
+                | rung
+                for r in taken
+                for rung in r["ladder"]
+            ]
+        )
+        notes["kalshi"] = (
+            "median of Kalshi's KXANTHVSPEND market for the day, read one cycle before B's own "
+            "reading: for past days at the cutoff two days before, for the window at the previous "
+            "run day's cutoff, carried forward to the days it does not reach; a past day without "
+            "a reading carries the day before's share"
+        )
+    elif "error" not in kalshi_source:
+        kalshi_source["note"] = "no day of the window has a reading, so X_d has no Kalshi column"
     return {
         "series": series,
         "last_observed": last_observed.date(),
-        "raw": {"vercel_labs_spend.csv": used[COLUMNS].reset_index(drop=True)},
+        "raw": raw,
         "sources": {
             "vercel": source
             | {
@@ -264,15 +301,10 @@ def snapshot(run_date: date, spec: dict) -> dict:
                 "days": int(len(values)),
                 "use": "Anthropic's share of spend on each UTC day that had ended at least 12 "
                 "hours before Vercel built the answer",
-            }
+            },
+            "kalshi": kalshi_source,
         },
-        "covariate_notes": {
-            "target": "Anthropic's share, in percent, of all AI Gateway spend on the UTC day, "
-            "from the labs leaderboard (spend) in Vercel's open-data export, for every day that "
-            "had ended at least 12 hours before Vercel built the answer. A day missing between "
-            "two such days is filled linearly",
-            "dow": "day of the week of the UTC day, Monday = 0",
-        },
+        "covariate_notes": notes,
     }
 
 
@@ -304,17 +336,24 @@ def _rule_date(day: date) -> str:
     return f"{MONTHS[day.month - 1].title()} {day.day}, {day.year}"
 
 
-def event_markets(day: date) -> tuple[list[dict], dict | None]:
-    """The markets of the date's KXANTHVSPEND event, and the request that listed them. Kalshi
-    moves older markets from /markets to /historical/markets; ([], None) if neither lists
-    them."""
-    query = urllib.parse.urlencode({"event_ticker": event_ticker(day), "limit": 100})
+def series_markets() -> dict[str, list[dict]]:
+    """Every KXANTHVSPEND market Kalshi lists, by event ticker. Kalshi moves older markets from
+    /markets to /historical/markets, so both are read."""
+    found: dict[str, dict] = {}
     for path in ("markets", "historical/markets"):
-        body, meta = _get(f"{KALSHI}/{path}?{query}")
-        listed = json.loads(body).get("markets") or []
-        if listed:
-            return listed, meta
-    return [], None
+        query = {"series_ticker": SERIES, "limit": 1000}
+        while True:
+            body, _ = _get(f"{KALSHI}/{path}?{urllib.parse.urlencode(query)}")
+            page = json.loads(body)
+            for market in page.get("markets") or []:
+                found.setdefault(market["ticker"], market)
+            if not page.get("cursor"):
+                break
+            query["cursor"] = page["cursor"]
+    events: dict[str, list[dict]] = {}
+    for market in found.values():
+        events.setdefault(market["event_ticker"], []).append(market)
+    return events
 
 
 def ladder(markets: list[dict], day: date) -> list[dict]:
@@ -455,63 +494,131 @@ def _local(day: date, clock: str, timezone: str) -> datetime:
     return datetime(day.year, day.month, day.day, hour, minute, tzinfo=ZoneInfo(timezone))
 
 
-def _no_point(run_date: date, source: dict, reason: str) -> dict:
-    """A baseline record without a forecast; the reason is printed for the daily log too."""
-    print(f"note: no Kalshi baseline for {run_date}: {reason}", file=sys.stderr)
-    return {"source": source | {"reason": reason}, "forecasts": []}
+def market_median(day: date, at: datetime, markets: list[dict], spread: float) -> dict:
+    """The median the date's KXANTHVSPEND event implied at `at`, from each contract's last
+    one-minute candle by then, with the quotes it came from. `point` is None, with the
+    reason, if the event had not opened or its quotes do not bracket the median."""
+    event = event_ticker(day)
+    rungs = ladder(markets, day)
+    opened = [datetime.fromisoformat(m["open_time"]) for m in markets if m.get("open_time")]
+    if not opened:
+        raise ValueError(f"{event}: Kalshi gives no open_time for its markets")
+    reading = {"target_date": day.isoformat(), "event_ticker": event, "read_at": at.isoformat()}
+    if min(opened) >= at:
+        reason = f"{event} opened after {at.isoformat()}"
+        return reading | {"point": None, "bracket": None, "reason": reason, "ladder": []}
+    candles, meta = last_candles(event, [r["ticker"] for r in rungs], min(opened), at)
+    quotes = [quote(candles.get(r["ticker"]), spread) for r in rungs]
+    median = implied_median([r["strike"] for r in rungs], [q["mid"] for q in quotes])
+    return reading | {
+        "point": None if median["point"] is None else round(median["point"], 2),
+        "bracket": median["bracket"],
+        "reason": median["reason"],
+        "ladder": [
+            rung | q | {"fitted": fitted}
+            for rung, q, fitted in zip(rungs, quotes, median["fitted"], strict=True)
+        ],
+        "retrieved_at": meta.get("retrieved_at"),
+    }
+
+
+def readings(wanted: list[tuple[date, datetime]], spread: float) -> list[dict | None]:
+    """market_median for each (date, moment) wanted, None for a date Kalshi lists no event for.
+    A reading of a past moment never changes, so each is kept on the host once taken and
+    Kalshi is asked only for the others."""
+    path = CACHE / f"kalshi_readings.{CACHE_VERSION}.json"
+    kept = json.loads(path.read_text()) if path.is_file() else {}
+    keys = [f"{event_ticker(day)} {at.isoformat()}" for day, at in wanted]
+    missing = [(key, *w) for key, w in zip(keys, wanted, strict=True) if key not in kept]
+    if missing:
+        if max(at for _, _, at in missing) > _now():
+            raise ValueError("Kalshi: a reading of a moment still to come")
+        markets = series_markets()
+        for key, day, at in missing:
+            if listed := markets.get(event_ticker(day)):
+                kept[key] = market_median(day, at, listed, spread)
+                try:
+                    CACHE.mkdir(parents=True, exist_ok=True)
+                    path.with_suffix(".tmp").write_text(json.dumps(kept))
+                    path.with_suffix(".tmp").replace(path)
+                except OSError as exc:  # a full disk must not cost the reading just taken
+                    print(f"warning: Kalshi reading not kept on the host: {exc!r}", file=sys.stderr)
+    return [kept.get(key) for key in keys]
+
+
+def kalshi_as_seen(
+    index: pd.DatetimeIndex,
+    target: pd.Series,
+    last_observed: pd.Timestamp,
+    run_date: date,
+    spec: dict,
+) -> tuple[pd.Series | None, list[dict]]:
+    """Kalshi's median for each day on `index` one cycle before B's own reading, and the
+    readings taken: for a past day, at the cutoff two days before it (the run day before the
+    one whose first target date it is); for the window, at the previous run day's cutoff,
+    carried forward to the days it does not reach (Kalshi opens an event about four days
+    ahead, for even dates only). A past day without a reading carries the day before's share,
+    a no-change forecast. The series is None if no day of the window has a reading."""
+    timezone, clock = spec["schedule"]["timezone"], spec["schedule"]["cutoff"]
+    wanted = []
+    for d in index:
+        compared_on = d.date() - timedelta(days=1) if d <= last_observed else run_date
+        wanted.append((d.date(), _local(compared_on - timedelta(days=1), clock, timezone)))
+    taken = readings(wanted, spec["baseline"]["max_quote_spread"])
+    seen = pd.Series(
+        [r["point"] if r and r["point"] is not None else math.nan for r in taken],
+        index=index,
+        name="kalshi",
+        dtype=float,
+    )
+    past = index <= last_observed
+    taken = [r for r in taken if r]
+    if seen[~past].isna().all():
+        return None, taken
+    seen[past] = seen[past].fillna(target.shift(1)[past]).fillna(target[past])
+    seen[~past] = seen[~past].ffill().fillna(target[past].iloc[-1])
+    return seen, taken
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """The median of Kalshi's market on the target date's share as it stood at the cutoff,
-    read the next day from its one-minute candlesticks. Empty before the cutoff, for a date
-    without an event (Kalshi lists even dates only), or when the quotes do not bracket the
-    median; the reason is then printed for the daily log too."""
-    [horizon] = spec["horizons"]
-    day = run_date + timedelta(days=horizon)
+    """The median of Kalshi's market on each target date that has a KXANTHVSPEND event, as it
+    stood at the cutoff, read the next day from its one-minute candlesticks. Kalshi lists even
+    dates only, each from about four days ahead, so normally two of the seven target dates
+    have one. Empty before the cutoff; a date without an event, or whose quotes do not
+    bracket the median, has no forecast, and the reason is printed for the daily log too."""
     timezone, clock = spec["schedule"]["timezone"], spec["schedule"]["cutoff"]
     cutoff = _local(run_date, clock, timezone)
-    event = event_ticker(day)
+    days = [run_date + timedelta(days=h) for h in spec["horizons"]]
     source = {
-        "report": f"Kalshi {event}, quotes at {clock} ET on {run_date.isoformat()}",
+        "report": f"Kalshi {SERIES}, quotes at {clock} ET on {run_date.isoformat()}",
         "posted": None,
         "model": f"Kalshi {SERIES}",
     }
     if _now() < cutoff:
-        return _no_point(run_date, source, "before the cutoff")
-    listed, _ = event_markets(day)
-    if not listed:
-        even = "; Kalshi lists this series for even dates only" if day.day % 2 else ""
-        return _no_point(run_date, source, f"{event} is not listed{even}")
-    rungs = ladder(listed, day)
-    opened = [datetime.fromisoformat(m["open_time"]) for m in listed if m.get("open_time")]
-    if not opened:
-        raise ValueError(f"{event}: Kalshi gives no open_time for its markets")
-    if min(opened) >= cutoff:
-        return _no_point(run_date, source, f"{event} opened after the cutoff")
-    candles, meta = last_candles(event, [r["ticker"] for r in rungs], min(opened), cutoff)
+        print(f"note: no Kalshi baseline for {run_date}: before the cutoff", file=sys.stderr)
+        return {"source": source | {"reason": "before the cutoff"}, "forecasts": []}
     spread = spec["baseline"]["max_quote_spread"]
-    quotes = [quote(candles.get(r["ticker"]), spread) for r in rungs]
-    median = implied_median([r["strike"] for r in rungs], [q["mid"] for q in quotes])
-    forecasts = []
-    if median["point"] is not None:
-        forecasts.append({"target_date": day.isoformat(), "point": round(median["point"], 2)})
-    else:
-        print(f"note: no Kalshi baseline for {run_date}: {median['reason']}", file=sys.stderr)
+    taken = readings([(day, cutoff) for day in days], spread)
+    forecasts, read = [], {}
+    for day, reading in zip(days, taken, strict=True):
+        if reading is None:
+            even = "; Kalshi lists this series for even dates only" if day.day % 2 else ""
+            reading = {"point": None, "reason": f"{event_ticker(day)} is not listed{even}"}
+        if reading["point"] is None:
+            print(
+                f"note: no Kalshi baseline for {day} on {run_date}: {reading['reason']}",
+                file=sys.stderr,
+            )
+        else:
+            forecasts.append({"target_date": day.isoformat(), "point": reading["point"]})
+        read[day.isoformat()] = reading
     return {
         "source": source
         | {
             "posted": cutoff.isoformat(),
-            "event_ticker": event,
-            "target_date": day.isoformat(),
             "method": METHOD,
             "max_quote_spread": spread,
-            "ladder": [
-                rung | q | {"fitted": fitted}
-                for rung, q, fitted in zip(rungs, quotes, median["fitted"], strict=True)
-            ],
-            "bracket": median["bracket"],
-            "reason": median["reason"],
-            "retrieved_at": meta.get("retrieved_at"),
+            "readings": read,
             "contract_terms_url": CONTRACT_TERMS,
         },
         "forecasts": forecasts,

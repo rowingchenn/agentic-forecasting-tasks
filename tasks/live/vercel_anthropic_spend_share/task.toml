@@ -3,7 +3,7 @@ artifacts = ["/home/user/output"]
 
 [task]
 name = "agentic-forecasting/vercel-anthropic-spend-share-live"
-keywords = ["forecasting", "live", "attention"]
+keywords = ["forecasting", "live", "economy"]
 
 [environment]
 cpus = 4
@@ -12,7 +12,7 @@ memory_mb = 8192
 [environment.env]
 AF_TIMEZONE = "America/New_York"
 AF_CUTOFF = "18:30"
-AF_HORIZONS = "[1]"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
 [agent]
@@ -32,11 +32,11 @@ network_justification = """\
 target = "vercel_anthropic_spend_share"
 title = "Anthropic's share of Vercel AI Gateway spend"
 question = """\
-  What share of all spend on Vercel's AI Gateway will go to Anthropic's models tomorrow \
-  (UTC)?"""
-taxonomy = "attention/ai-usage"
+  What share of all spend on Vercel's AI Gateway will go to Anthropic's models on each \
+  of the next seven UTC days?"""
+taxonomy = "economy/technology-adoption"
 driver = "behavioral"
-domain = "AI usage"
+domain = "Technology adoption"
 region = "Global"
 unit = "% of spend"
 tradable = false
@@ -46,7 +46,8 @@ summary = """\
   models developers and their coding tools choose moves it by several points from day to \
   day and by tens of points over months; model releases, price changes and outages add \
   information that history alone does not contain. Kalshi runs a market on the value of \
-  every even date, which gives the baseline."""
+  every even date, which gives the baseline. One of the agent configurations runs on an \
+  Anthropic model, so this target asks it to forecast its maker's market share."""
 
 [metadata.agentic-forecasting.y]
 definition = """\
@@ -54,13 +55,15 @@ definition = """\
   date, a UTC day: the field share_percent of the row with name \"anthropic\" and metric \
   \"spend\" in the labs dataset (modality \"all\") of Vercel's AI Gateway leaderboard \
   export, the data of the leaderboard's Spend chart, \"Share of AI Gateway spend across \
-  the top labs\". Every lab's share of the day is listed, and they sum to 100."""
+  the top labs\". Every lab's share of the day is listed, and they sum to 100. Vercel \
+  documents neither what its spend measures nor the time zone of its days; UTC days are \
+  inferred, not documented."""
 settlement = """\
-  First value the export shows for the date once a full day has passed since the date's \
-  UTC day ended, kept to its four decimals; later changes are not used. Kalshi settles \
-  its market on the chart's value at 10:00 ET the next day, rounded to one decimal; that \
-  matched the export's value rounded on 18 of the 19 dates settled by 2026-10-30, and \
-  was 0.1 lower on 2026-09-26."""
+  The first value recorded for the date: the export's value, kept to its four decimals, \
+  read once a full day has passed since the date's UTC day ended, normally at the 16:45 \
+  ET run two days after the date. Vercel changes past values slightly afterwards \
+  (2026-09-26 read 35.3554 about 2026-11-01 and 35.3648 on 2026-11-03); later changes \
+  are not used."""
 
 [metadata.agentic-forecasting.y.source]
 name = "Vercel AI Gateway leaderboard, labs, spend (open data, CC BY 4.0)"
@@ -69,13 +72,13 @@ url = "https://vercel.com/ai-gateway/leaderboards/labs"
 [metadata.agentic-forecasting.schedule]
 snapshot = "16:45"
 every_days = 1
-first_run = "2026-11-02"
+first_run = "2026-11-05"
 
 [metadata.agentic-forecasting.x]
 history_start = "2025-10-01"
 frequency = "daily, UTC days"
 given_to = "TSFMs only; agents find their own information"
-raw = ["Every lab's daily share of AI Gateway spend in the export, for the days X_d uses"]
+raw = ["Every lab's daily share of AI Gateway spend in the export, for the days X_d uses", "Kalshi's quotes for each contract at each reading of the Kalshi column"]
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Spend share history"
@@ -101,26 +104,52 @@ why = """\
   models, which can shift the mix of spend."""
 source = "computed"
 
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier Kalshi market median"
+columns = ["kalshi"]
+expert = true
+what = """\
+  The median Kalshi's KXANTHVSPEND market implied for each date, read as B is but one \
+  cycle earlier: for past days, at the cutoff two days before the date (the run day \
+  before the one whose first target date it is); for the forecast window, at the \
+  previous run day's cutoff, carried forward to the dates it does not reach. Kalshi \
+  lists even dates only, from about four days ahead, so that reading covers at most the \
+  run date and the next three days. A past day without a reading (odd dates, days \
+  before the market began in late September 2026, quotes that do not bracket the \
+  median) carries the day before's share. Without a reading for any day of the window, \
+  X_d has no such column. The reading at this run's cutoff, which is B, is not \
+  included."""
+why = """\
+  Traders with money at stake follow model launches, price changes and outages as they \
+  happen, which the history alone does not contain."""
+source = "Kalshi KXANTHVSPEND, one-minute candlesticks"
+url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXANTHVSPEND"
+
 [metadata.agentic-forecasting.baseline]
 system = "kalshi-anthropic-spend"
 label = "Kalshi Anthropic spend-share market"
 name = "Median implied by Kalshi's KXANTHVSPEND market at the cutoff"
 kind = "point"
+visible_to_agents = true
 max_quote_spread = 0.2
 method = """\
-  Kalshi lists an event for each even calendar date, such as KXANTHVSPEND-02NOV26, with \
-  nine contracts \"above k%\" at unevenly spaced strikes. A contract pays when the \
-  chart's value at 10:00 ET the next day, rounded to one decimal, exceeds k; it opens \
-  about four days before the date and closes at 23:59 ET on it. Each contract's price at \
-  the cutoff is the midpoint of its best bid and ask, used when both exist and are at \
-  most 0.20 apart, and is read as the probability that the share is at least k + 0.05. \
-  The prices are made non-increasing in k by pooling adjacent violators and joined \
-  linearly between quoted strikes; the point is the median, where they cross one half. \
-  The median rather than the most probable bin: bins between strikes span 0.2 to 3.7 \
-  points, so the most probable one is often merely the widest, and the median is the \
-  point that minimises the absolute error a point forecast is scored on. B is empty when \
-  the target date has no event (odd dates) or the quoted strikes do not bracket the \
-  median. It is recorded the next day from Kalshi's one-minute candlesticks."""
+  For each target date with a KXANTHVSPEND event open at the cutoff, the median its \
+  market implied then; the other target dates have no B. Kalshi lists an event for each \
+  even calendar date, such as KXANTHVSPEND-02NOV26, opening about four days ahead and \
+  closing at 23:59 ET on the date, so normally two of the seven target dates, both among \
+  the first four, have one. Its six to nine contracts \"above k%\" pay when the chart's \
+  value at 10:00 ET the next day, rounded to one decimal, exceeds k; that rounded value \
+  matched the export's on 19 of 20 settlements checked on 2026-11-03. Each contract's \
+  price at the cutoff is the midpoint of its best bid and ask in its last one-minute \
+  candlestick by then, used when both exist and are at most 0.20 apart, and is read as \
+  the probability that the share is at least k + 0.05. The prices are made \
+  non-increasing in k by pooling adjacent violators and joined linearly between quoted \
+  strikes; the point is the median, where they cross one half, and there is none when \
+  the quoted strikes do not bracket it. The median rather than the most probable bin: \
+  bins between strikes span 0.2 to 3.7 points, so the most probable one is often merely \
+  the widest, and the median is the point that minimises the absolute error a point \
+  forecast is scored on. The market trades in public, so the agents can see it during \
+  the run. It is recorded the next day from Kalshi's candlesticks."""
 
 [metadata.agentic-forecasting.baseline.source]
 name = "Kalshi KXANTHVSPEND, Anthropic Vercel spend share"
