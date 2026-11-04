@@ -1,0 +1,128 @@
+spec_type: core/v1
+name: usgs-global-m5-earthquakes-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # Empty for a fresh agent; the continual variant below fills it.
+  history_note: ""
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: UTC
+  cutoff: "13:45"
+  horizons: [1, 2, 3, 4, 5, 6, 7]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+# continual: the same agent continues its native session in the sandbox it kept on the
+# previous run day (ale run --continue-from), with its earlier submissions in
+# /home/user/history/, and is asked to learn from them.
+variants:
+  - name: continual
+    params:
+      history_note: >-
+        You may have forecast this target on earlier run days in this same environment and
+        session; if so, your earlier submissions are under `/home/user/history/<run date>/`.
+        Compare them with the values published since, and use what you learn to improve how
+        you forecast.
+
+metadata:
+  tags: [forecasting, live, environment]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: usgs_global_m5_earthquakes
+    title: Worldwide daily earthquakes above magnitude 5
+    question: >-
+      How many earthquakes with preferred magnitude strictly greater than 5.0 will the
+      USGS catalogue record worldwide on each of the next seven UTC days?
+    taxonomy: environment/natural-hazards
+    driver: geophysical
+    domain: Natural hazards
+    region: Worldwide
+    unit: earthquakes/day
+    tradable: false
+    summary: >-
+      Daily counts of worldwide earthquakes with preferred magnitude strictly above 5.0
+      in the USGS Comprehensive Earthquake Catalog. Event clustering and aftershock
+      sequences can change the rate. This forecasts aggregate counts, not individual
+      earthquake times, places or warning alerts.
+    y:
+      definition: >-
+        Count distinct event IDs with eventtype earthquake, preferred magnitude mag > 5.0,
+        and preferred origin time in the UTC calendar day, in the USGS FDSN GeoJSON query
+        service. All magnitude types and review statuses are eligible; there is no
+        geographic restriction. Magnitude 5.0 is excluded. Not all alternate origins or
+        magnitudes are counted, and the count is not restricted to moment magnitude Mw.
+      source:
+        name: USGS Comprehensive Earthquake Catalog (ComCat), FDSN Event API
+        url: https://earthquake.usgs.gov/fdsnws/event/1/
+      settlement: >-
+        First count observed and retained by the pipeline when the date is at least two
+        calendar days before collection. Later magnitude, origin-time, merge or deletion
+        revisions do not overwrite settled counts. The allowance reduces initial reporting
+        latency but does not make the catalogue final. Historical inputs use the catalogue
+        as retrieved at the snapshot, not a reconstruction of historical publication states.
+        A successful complete query with no matching events gives zero; failed or truncated
+        requests do not. Source: USGS ComCat; retain source attribution with published data.
+    schedule:
+      snapshot: "12:05"         # UTC; 100 minutes before cutoff
+      every_days: 1
+      first_run: "2026-11-09"   # move forward if enabled later
+    x:
+      history_start: "2024-01-01"
+      frequency: daily UTC; counts through run_date minus two days
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Earthquake count history
+          columns: [target]
+          what: >-
+            Daily global counts of preferred-magnitude > 5.0 earthquakes, with zero-event
+            days included, as retrieved and frozen before this run's cutoff.
+          why: Recent activity and the longer history describe the count level and clustering.
+          source: USGS ComCat FDSN Event API
+          url: https://earthquake.usgs.gov/fdsnws/event/1/
+        - name: Calendar
+          columns: [dow, month]
+          what: UTC weekday (Monday = 0) and month (1 through 12), known for all dates.
+          why: >-
+            These identify calendar position; no physical weekly earthquake cycle is assumed.
+          source: computed
+      raw:
+        - Event IDs, UTC origin times, preferred magnitudes and source networks used in counts
+    baseline:
+      system: usgs-global-m5-historical-mean
+      label: Expanding historical mean (statistical)
+      name: Expanding historical mean, not an official or expert earthquake forecast
+      kind: point
+      source:
+        name: Frozen run-day USGS ComCat count history
+        url: https://earthquake.usgs.gov/fdsnws/event/1/
+      method: >-
+        Arithmetic mean of every daily target count from history_start through last_observed,
+        including zero-event days, repeated for all seven forecast dates without rounding.
+        Uses hash-checked frozen X_d when collected on the next day; never reconstructs an
+        old forecast from revised catalogue data. This statistical reference is proposed as
+        an exception to the official/expert baseline guideline, subject to maintainer review.
