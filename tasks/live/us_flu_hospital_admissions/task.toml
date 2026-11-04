@@ -126,6 +126,7 @@ system = "flusight-ensemble"
 label = "FluSight ensemble"
 name = "CDC FluSight ensemble forecast"
 kind = "quantiles"
+visible_to_agents = false
 method = """\
   CDC's median ensemble of the teams' quantile forecasts for the run date's round \
   (reference date: the Saturday after the run date), as first committed after the \

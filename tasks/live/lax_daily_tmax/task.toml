@@ -117,6 +117,7 @@ system = "nws-official"
 label = "NWS official"
 name = "NWS Los Angeles/Oxnard forecast high for Los Angeles Intl Airport"
 kind = "point"
+visible_to_agents = false
 method = """\
   The first Tabular State Forecast (SFTLOX) the NWS issues after the cutoff, normally the \
   one of about 18:28 UTC, which the agents cannot see: its daytime high (6 a.m. to 6 p.m.) \

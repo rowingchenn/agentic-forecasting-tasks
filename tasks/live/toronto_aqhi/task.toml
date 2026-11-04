@@ -125,6 +125,7 @@ system = "eccc-official"
 label = "ECCC official"
 name = "ECCC AQHI forecast"
 kind = "point"
+visible_to_agents = false
 method = """\
   ECCC's 06:00 AQHI forecast for the community on the run date, the first issue after \
   the cutoff, which the agents cannot see. Its \"Today\" period gives the run date and \
