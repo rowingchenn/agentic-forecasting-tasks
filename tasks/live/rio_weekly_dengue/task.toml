@@ -12,7 +12,7 @@ memory_mb = 8192
 [environment.env]
 AF_TIMEZONE = "America/Sao_Paulo"
 AF_CUTOFF = "18:45"
-AF_HORIZONS = "[6]"
+AF_HORIZONS = "[1, 8]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
 [agent]
@@ -33,7 +33,7 @@ target = "rio_weekly_dengue"
 title = "Rio de Janeiro weekly reported dengue cases"
 question = """\
   How many reported dengue cases will InfoDengue record for Rio de Janeiro municipality \
-  in the next full Sunday-through-Saturday epidemiological week?"""
+  in each of the next two Sunday-to-Saturday epidemiological weeks?"""
 taxonomy = "health/other-infectious-disease"
 driver = "epidemic"
 domain = "Non-respiratory infectious disease"
@@ -42,8 +42,10 @@ unit = "reported cases/week"
 tradable = false
 summary = """\
   InfoDengue's reported dengue count (casos) for Rio de Janeiro municipality, not a \
-  nationwide total or the model nowcast casos_est. One next full epidemiological week is \
-  forecast per Monday run. Reporting delays and later revisions remain explicit."""
+  nationwide total or the model nowcast casos_est. Each Saturday run forecasts the two \
+  epidemiological weeks that start the next day and a week later. A week's first counts \
+  are far from complete, so it is settled and scored on the count in the first release at \
+  least 28 days after it ends, 4 to 5 weeks after the week."""
 
 [metadata.agentic-forecasting.y]
 definition = """\
@@ -52,34 +54,37 @@ definition = """\
   its end. Use the published date, not a reconstructed ISO week or the model's \
   casos_est. Counts are reported notifications, not necessarily lab-confirmed cases."""
 settlement = """\
-  First reported casos count observed and retained by the pipeline at least 28 calendar \
-  days after the week's Saturday end. This is a reporting allowance, not proof the count \
-  is final or the publisher's first version. Later revisions do not overwrite \
-  settlement. Recent provisional reports remain inputs only, not settled truth or \
-  substitutes using nowcast estimates. Missing weeks are unavailable, not zeros."""
+  The casos value in the first InfoDengue release dated (versao_modelo) at least 28 days \
+  after the week's Saturday; a row without a release date does not settle. Later \
+  revisions are not used, and missing weeks are unavailable, not zeros."""
 
 [metadata.agentic-forecasting.y.source]
 name = "InfoDengue / AlertaDengue, Rio de Janeiro municipal dengue surveillance"
 url = "https://info.dengue.mat.br/services/api"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "17:05"
+snapshot = "17:00"
 every_days = 7
-first_run = "2026-11-09"
+first_run = "2026-11-07"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-07"
 frequency = "weekly, Sunday week-start labels; no daily interpolation"
 given_to = "TSFMs only; agents find their own information"
-raw = ["Source Sunday dates, epidemiological identifiers, casos and optional model metadata"]
+raw = ["""\
+  Each week's source Sunday date, epidemiological week, casos, release date \
+  (versao_modelo), and InfoDengue's nowcast casos_est with its bounds casos_est_min and \
+  casos_est_max, as published at the snapshot"""]
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Published reported-case history"
 columns = ["target"]
 what = """\
-  Current published casos for completed epidemiological weeks through the latest API \
-  record before the snapshot, including provisional recent counts. Older inputs are as \
-  revised at retrieval, not archived historical first releases."""
+  casos of every completed week as published at the snapshot, through the latest week \
+  InfoDengue has released, normally the one that started 13 days before the run date; \
+  the week ending on the run date is left empty. Recent weeks are provisional: the latest \
+  is often about a third of its eventual count, the one before it about four fifths. \
+  Older weeks are as revised since, not as first released."""
 why = "Recent reports describe the epidemic trajectory, with known reporting-delay bias."
 source = "InfoDengue alertcity API, municipality 3304557, dengue"
 url = "https://info.dengue.mat.br/services/api"
@@ -90,19 +95,3 @@ columns = ["iso_week", "month"]
 what = "ISO week number and month of the Sunday label, including future weeks."
 why = "Annual seasonality affects dengue activity; these dates are known in advance."
 source = "computed; ISO week is a covariate, not the source epidemiological-week key"
-
-[metadata.agentic-forecasting.baseline]
-system = "rio-dengue-persistence"
-label = "Last observed week (statistical)"
-name = "Persistence of latest published reported count, not an official/expert forecast"
-kind = "point"
-method = """\
-  Use casos from the latest published completed week in frozen X_d for the single target \
-  week. That input can be provisional; do not substitute casos_est or the most recent \
-  settled week. Next-day collection reads hash-checked pre-cutoff X_d rather than \
-  revised source history. Statistical benchmark proposed as an exception to the \
-  official/expert guideline, subject to maintainer acceptance."""
-
-[metadata.agentic-forecasting.baseline.source]
-name = "Frozen run-day InfoDengue reported-case history"
-url = "https://info.dengue.mat.br/services/api"

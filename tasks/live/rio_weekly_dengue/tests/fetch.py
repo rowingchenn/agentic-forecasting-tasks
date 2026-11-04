@@ -1,15 +1,16 @@
-"""Host-only InfoDengue Rio reported cases; persistence and delayed settlement.
+"""Host-only InfoDengue Rio reported cases: X_d and delayed-settlement truth. There is no
+public official or expert forecast of this series, so there is no B.
 
-No credentials. casos_est is a nowcast, never truth or the persistence anchor.
-Source documentation: https://info.dengue.mat.br/services/api
+No credentials. casos_est is InfoDengue's nowcast of past weeks, never truth; X_d keeps it
+in raw/ as published at the snapshot. Source documentation: https://info.dengue.mat.br/services/api
 """
 from __future__ import annotations
-import hashlib
+import http.client
 import json
 import math
+import sys
 import time
 from datetime import UTC, date, datetime, time as clock, timedelta
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -22,6 +23,7 @@ ZONE = ZoneInfo("America/Sao_Paulo")
 GEOCODE = 3304557
 SETTLEMENT_LAG_DAYS = 28
 MAX_LAG_DAYS = 21
+FAILURES = (OSError, http.client.HTTPException, ValueError)
 
 
 def _now():
@@ -99,6 +101,8 @@ def _weekly(today, spec):
             if week in records:
                 raise ValueError("Duplicate source Sunday; review query/year boundaries.")
             records[week] = {"week_start": str(week), "SE": row.get("SE"), "casos": int(value),
+                             "casos_est": row.get("casos_est"), "casos_est_min": row.get("casos_est_min"),
+                             "casos_est_max": row.get("casos_est_max"),
                              "versao_modelo": row.get("versao_modelo")}
     if not records:
         raise ValueError("No completed reported-case history returned.")
@@ -109,7 +113,7 @@ def _weekly(today, spec):
     raw = pd.DataFrame([records[d.date()] for d in index])
     return history, raw, {"name": "InfoDengue / AlertaDengue", "documentation": DOCS,
                           "urls": urls, "geocode": GEOCODE, "disease": "dengue",
-                          "field": "casos", "note": "Reported notifications; nowcasts are not truth. Reuse terms require maintainer verification."}
+                          "field": "casos", "note": "Reported notifications (SINAN, via InfoDengue; Codeco et al. 2018); nowcasts are not truth."}
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
@@ -133,49 +137,20 @@ def snapshot(run_date: date, spec: dict) -> dict:
 
 
 def truth(today: date, spec: dict) -> pd.Series:
+    """casos of every week that a release dated (versao_modelo) at least 28 days after its
+    Saturday has rewritten; a week without a version date is not yet settled. The pipeline
+    keeps the first value it sees, that of the first such release. If InfoDengue cannot be
+    read, nothing is recorded today and a warning is printed, so that the day's run goes on."""
     if today > _now().date():
         raise RuntimeError("Cannot settle future dates.")
-    history, _, _ = _weekly(today, spec)
-    eligible = history.index + pd.Timedelta(days=6 + SETTLEMENT_LAG_DAYS) <= pd.Timestamp(today)
-    # update_truth preserves the first value seen AFTER eligibility, not early provisional rows.
-    return history.loc[eligible]
-
-
-def _reference(run_date, spec):
-    root = (Path(__file__).resolve().parents[3] / "mock" / spec["target"] / str(run_date)
-            / "oracle" / "assets" / "x")
-    if not root.exists():
-        result = snapshot(run_date, spec)  # current pre-cutoff smoke check only
-        return result["series"]["target"], result["last_observed"], result["sources"]["as_of"], None
-    manifest = json.loads((root / "MANIFEST.json").read_text())
-    for name in ("task.json", "series.csv"):
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != manifest["files"].get(name):
-            raise ValueError(f"Archived {name} fails its hash.")
-    task = json.loads((root / "task.json").read_text())
-    last = date.fromisoformat(task["last_observed"])
-    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
-    if (task["run_date"] != str(run_date) or task["task"] != spec["target"]
-            or manifest["snapshot"] != f"{spec['target']}/{run_date}"
-            or last.weekday() != 6 or not run_date - timedelta(days=MAX_LAG_DAYS) <= last
-            or last + timedelta(days=6) >= run_date or as_of.tzinfo is None
-            or as_of.astimezone(ZONE).date() != run_date or as_of >= _cutoff(run_date, spec)):
-        raise ValueError("Invalid pre-cutoff run-day archive.")
-    history = pd.read_csv(root / "series.csv", index_col="timestamp", parse_dates=True)["target"]
-    return history, last, as_of.isoformat(), manifest["snapshot"]
+    try:
+        history, raw, _ = _weekly(today, spec)
+    except FAILURES as exc:
+        print(f"warning: InfoDengue not read, no truth recorded today: {exc!r}", file=sys.stderr)
+        return pd.Series(dtype=float, index=pd.DatetimeIndex([]))
+    release = pd.to_datetime(raw["versao_modelo"], errors="coerce").to_numpy()  # missing: NaT
+    return history[release >= history.index + pd.Timedelta(days=6 + SETTLEMENT_LAG_DAYS)]
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    if run_date > _now().date():
-        raise RuntimeError("Cannot build a future baseline.")
-    history, last, as_of, frozen = _reference(run_date, spec)
-    past = history.loc[:str(last)]
-    if not past.index.equals(pd.date_range(spec["x"]["history_start"], last, freq="W-SUN")) or past.isna().any():
-        raise ValueError("Incomplete frozen reported-case history.")
-    point = float(past.iloc[-1])
-    if not math.isfinite(point) or point < 0 or not point.is_integer():
-        raise ValueError("Invalid persistence reference count.")
-    return {"source": {"name": "Last observed week (statistical, not expert)", "url": DOCS,
-                       "as_of": as_of, "snapshot": frozen, "last_observed": str(last),
-                       "field": "casos", "provisional_input": True},
-            "forecasts": [{"target_date": str(run_date + timedelta(days=h)), "point": point}
-                          for h in spec["horizons"]]}
+    return {"source": {"name": "none: no official or expert forecast of this series"}, "forecasts": []}
