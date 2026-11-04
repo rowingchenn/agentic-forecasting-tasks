@@ -72,7 +72,7 @@ url = "https://vercel.com/ai-gateway/leaderboards/labs"
 [metadata.agentic-forecasting.schedule]
 snapshot = "16:45"
 every_days = 1
-first_run = "2026-11-05"
+first_run = "2026-11-04"
 
 [metadata.agentic-forecasting.x]
 history_start = "2025-10-01"

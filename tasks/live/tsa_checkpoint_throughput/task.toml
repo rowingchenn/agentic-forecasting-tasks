@@ -73,7 +73,7 @@ url = "https://www.tsa.gov/travel/passenger-volumes"
 [metadata.agentic-forecasting.schedule]
 snapshot = "11:15"
 every_days = 1
-first_run = "2026-11-05"
+first_run = "2026-11-04"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-01"

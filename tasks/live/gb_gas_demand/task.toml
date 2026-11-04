@@ -69,7 +69,7 @@ url = "https://data.nationalgas.com/find-gas-data"
 [metadata.agentic-forecasting.schedule]
 snapshot = "13:00"
 every_days = 1
-first_run = "2026-11-05"
+first_run = "2026-11-04"
 
 [metadata.agentic-forecasting.x]
 history_start = "2022-10-01"
