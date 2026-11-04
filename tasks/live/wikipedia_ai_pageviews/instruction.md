@@ -1,5 +1,6 @@
-Forecast the daily page views of English Wikipedia's Artificial intelligence article
-for the next seven UTC days. You have about 90 minutes.
+Forecast the daily page views of English Wikipedia's Artificial intelligence article for
+the next seven days. The Task runs every day and asks for the seven UTC days after the run
+date; forecasts are due at 13:45 UTC on the run date. You have about 90 minutes.
 
 ## The target
 
@@ -11,11 +12,12 @@ filters and the requested dates. Count only that fixed article title: do not com
 redirects, other language editions or related articles, or follow a renamed title.
 
 The target counts page-view events classified by Wikimedia as user traffic. It is not
-unique visitors, search interest or all traffic including known automated agents.
-Settlement uses the first value observed and retained by the pipeline when the date
-is at least two calendar days before collection. Later revisions do not replace it.
-Missing records are not zero. An article move or prolonged outage requires maintainer
-review; it does not silently change the target.
+unique visitors, search interest or all traffic including known automated agents; the
+user class can include automated traffic that Wikimedia did not detect. A forecast is
+settled on the value the API first publishes for that date, normally a few hours after the
+UTC day ends; later changes do not replace it. Missing records are not zero. An article
+move or prolonged outage requires maintainer review; it does not silently change the
+target.
 
 ## Inputs and environment
 

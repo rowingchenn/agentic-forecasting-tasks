@@ -50,12 +50,13 @@ definition = """\
   The integer views field for project en.wikipedia.org, access all-access, agent user, \
   article Artificial_intelligence, granularity daily, for the UTC date. These are \
   page-view events classified as user traffic, not unique visitors, searches, all-agent \
-  traffic or the sum of translated articles or redirects."""
+  traffic or the sum of translated articles or redirects. The user class can include \
+  automated traffic that Wikimedia did not detect."""
 settlement = """\
-  First value observed and retained by the pipeline once the date is at least two \
-  calendar days before collection. Later source revisions do not overwrite it. This is \
-  not a claim to capture Wikimedia's first published version. Missing records are \
-  unavailable, not zero. The fixed title is not followed on rename."""
+  A forecast is settled on the value the API first publishes for that date, normally a \
+  few hours after the UTC day ends; later changes do not replace it. A date the API \
+  does not report is not settled, never taken as zero. The fixed title is not followed \
+  on rename."""
 
 [metadata.agentic-forecasting.y.source]
 name = "Wikimedia Analytics API, per-article page views"
@@ -63,13 +64,13 @@ url = """\
   https://doc.wikimedia.org/generated-data-platform/aqs/analytics-api/reference/page-views.html"""
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "12:05"
+snapshot = "11:55"
 every_days = 1
 first_run = "2026-11-09"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-01"
-frequency = "daily UTC; at least one full day of publication allowance"
+frequency = "daily, UTC days"
 given_to = "TSFMs only; agents find their own information"
 raw = ["Daily page-view records for the exact project, access, agent and article filters"]
 
@@ -77,8 +78,9 @@ raw = ["Daily page-view records for the exact project, access, agent and article
 name = "Article view history"
 columns = ["target"]
 what = """\
-  Daily user-classified views of the fixed English Wikipedia article, through run_date \
-  minus two days, fetched and frozen at the run-day snapshot."""
+  The target itself, every day through the day before the run date, which Wikimedia \
+  publishes a few hours after the UTC day ends; on a day Wikimedia is late, through two \
+  days before. A day the API does not report is left empty."""
 why = "History carries the level and weekday pattern of attention to the article."
 source = "Wikimedia Analytics API"
 url = """\
@@ -90,20 +92,3 @@ columns = ["dow", "month"]
 what = "UTC weekday (Monday = 0) and month (1 through 12), including future dates."
 why = "Weekday and seasonal patterns can affect readership."
 source = "computed"
-
-[metadata.agentic-forecasting.baseline]
-system = "wikipedia-ai-weekly-naive"
-label = "Weekly seasonal naive (statistical)"
-name = "Seven-day seasonal naive reference, not an official or expert forecast"
-kind = "point"
-method = """\
-  For each target date, subtract seven days repeatedly until the date is no later than \
-  last_observed, and use that observed count from frozen X_d. The publication allowance \
-  can require a 14-day lookback. Collection on the next day reads X_d, never newly \
-  downloaded history. This statistical reference is proposed as an exception to the \
-  official/expert baseline guideline, subject to maintainer review."""
-
-[metadata.agentic-forecasting.baseline.source]
-name = "Frozen run-day Wikimedia page-view history"
-url = """\
-  https://wikimedia.org/api/rest_v1/metrics/pageviews/per-article/en.wikipedia.org/all-access/user/Artificial_intelligence/daily/"""
