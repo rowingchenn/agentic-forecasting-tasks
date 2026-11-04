@@ -1,0 +1,143 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-flu-hospital-admissions-live"
+keywords = ["forecasting", "live", "health"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "14:05"
+AF_HORIZONS = "[3, 10, 17, 24]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_flu_hospital_admissions"
+title = "US weekly influenza hospital admissions"
+question = """\
+  How many people will be admitted to US hospitals with confirmed influenza this week \
+  and in each of the next three weeks?"""
+taxonomy = "health/respiratory-illness"
+driver = "epidemic"
+domain = "Respiratory illness"
+region = "United States"
+unit = "admissions per week"
+tradable = false
+summary = """\
+  New hospital admissions with laboratory-confirmed influenza across the United States, \
+  week by week, as hospitals report them to CDC's National Healthcare Safety Network \
+  (NHSN). The timing and size of the flu season drive it, and surveillance reports, \
+  outbreak news and dozens of modelling teams' forecasts add information that history \
+  alone does not contain. It is compared with CDC's FluSight ensemble."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  New hospital admissions of patients with laboratory-confirmed influenza in the United \
+  States in the MMWR week (Sunday to Saturday) ending on the target date: the field \
+  totalconfflunewadm for jurisdiction USA in NHSN's Weekly Hospital Respiratory Data \
+  (HRD) Metrics by Jurisdiction, preliminary dataset (data.cdc.gov mpgq-jmmr)."""
+settlement = """\
+  First published value, normally in NHSN's release on the Wednesday after the week \
+  ends. NHSN's later revisions, usually upward as late reports arrive, and its official \
+  Friday dataset (ua7e-t2fy) are not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "CDC NHSN Weekly Hospital Respiratory Data, preliminary (data.cdc.gov mpgq-jmmr)"
+url = """\
+  https://data.cdc.gov/Public-Health-Surveillance/Weekly-Hospital-Respiratory-Data-HRD-Metrics-by-Ju/mpgq-jmmr"""
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:20"
+every_days = 7
+first_run = "2026-11-18"
+
+[metadata.agentic-forecasting.x]
+history_start = "2022-10-01"
+frequency = "weekly, MMWR weeks dated on their Saturdays"
+given_to = "TSFMs only; agents find their own information"
+raw = ["NHSN weekly national rows as published now (data.cdc.gov mpgq-jmmr), with the percent of hospitals reporting", "The first-printed national values used, from the FluSight hub's archived copies of NHSN's data", "National weekly-admissions quantiles of every FluSight-ensemble round before the run"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Admissions history"
+columns = ["target"]
+what = """\
+  The target itself, every week up to the latest NHSN release, on the scale it is \
+  settled on: the newest week as NHSN publishes it at the snapshot, its first print; \
+  older weeks as first printed, from the earliest of the FluSight hub's weekly archived \
+  copies of NHSN's data made within two weeks of the week, and NHSN's current, revised \
+  value where there is none (before September 2023 and in archive gaps). A missing week \
+  is filled linearly."""
+why = """\
+  Flu seasons rise and fall over weeks, so the recent trend carries most of the \
+  near-term signal, and past seasons show the usual shape. First prints ran a median \
+  9-10% below the revised values in 2024-25 and 2025-26, so a history of revised values \
+  would not match what is forecast."""
+source = "CDC NHSN (data.cdc.gov mpgq-jmmr); FluSight hub's archived copies"
+url = """\
+  https://github.com/cdcepi/FluSight-forecast-hub/tree/main/auxiliary-data/target-data-archive"""
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier FluSight ensemble forecast"
+columns = ["flusight"]
+expert = true
+what = """\
+  The FluSight ensemble's median for each week as a run could see it: for past weeks, \
+  from the latest round before the run whose first target week it was, normally one week \
+  ahead; for the forecast window, from the latest round before this run (normally last \
+  Thursday's), carried forward to the last week it does not reach. Past weeks no round \
+  covered (before October 2023, between seasons) carry the week before's admissions. The \
+  round the run is compared with comes after the cutoff and is not included. Between \
+  seasons, when no round reaches the forecast window, X_d has no such column."""
+why = """\
+  The ensemble pools dozens of teams' models of flu transmission and reporting, which \
+  the history alone cannot see."""
+source = "CDC FluSight forecast hub, FluSight-ensemble"
+url = """\
+  https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output/FluSight-ensemble"""
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["week", "holiday"]
+what = "MMWR week number of the year and the number of US federal holidays in the week."
+why = """\
+  Flu seasons build through the same winter weeks each year, and holidays change both \
+  how people mix and when hospitals report."""
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "flusight-ensemble"
+label = "FluSight ensemble"
+name = "CDC FluSight ensemble forecast"
+kind = "quantiles"
+method = """\
+  CDC's median ensemble of the teams' quantile forecasts for the run date's round \
+  (reference date: the Saturday after the run date), as first committed after the \
+  cutoff, which the agents cannot see; CDC normally commits it on Thursday morning, \
+  after teams submit by 11 p.m. ET on Wednesday, and it is recorded the next day, or \
+  within the week when a holiday delays the round. Its national quantiles at the Task's \
+  levels for horizons 0 to 3 give the four target weeks; horizon 0 is the week already \
+  under way on the run date. A round committed before the cutoff is not used. Between \
+  seasons (about June to early October) there is no round, and those run days have no \
+  B."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "CDC FluSight forecast hub, FluSight-ensemble (CC BY 4.0)"
+url = """\
+  https://github.com/cdcepi/FluSight-forecast-hub/tree/main/model-output/FluSight-ensemble"""
