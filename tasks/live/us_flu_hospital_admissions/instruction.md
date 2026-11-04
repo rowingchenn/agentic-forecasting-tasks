@@ -17,11 +17,17 @@ official release on Fridays (dataset `ua7e-t2fy`), are not used. Single states, 
 100,000, and other surveillance systems such as FluSurv-NET or ILINet measure different
 quantities.
 
+NHSN's release on the run date, normally late in the morning Eastern time, adds the week
+that ended the Saturday before. The first target week, ending this Saturday, is therefore
+already under way at the cutoff, and no part of its count is published until the
+Wednesday after it ends.
+
 ## Inputs and environment
 
-`/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[3, 10, 17, 24] days), the submission cutoff (14:00 America/New_York on the run date), and the
-quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
+Runs are on Wednesdays. `/home/user/input/task.json` gives the run date, the target dates
+(the run date plus [3, 10, 17, 24] days: the Saturday that ends this week and the three
+Saturdays after it), the submission cutoff (14:05 America/New_York on the run date), and
+the quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
 
 You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
 

@@ -11,7 +11,7 @@ memory_mb = 8192
 
 [environment.env]
 AF_TIMEZONE = "America/New_York"
-AF_CUTOFF = "14:00"
+AF_CUTOFF = "14:05"
 AF_HORIZONS = "[3, 10, 17, 24]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
@@ -103,7 +103,8 @@ what = """\
   ahead; for the forecast window, from the latest round before this run (normally last \
   Thursday's), carried forward to the last week it does not reach. Past weeks no round \
   covered (before October 2023, between seasons) carry the week before's admissions. The \
-  round the run is compared with comes after the cutoff and is not included."""
+  round the run is compared with comes after the cutoff and is not included. Between \
+  seasons, when no round reaches the forecast window, X_d has no such column."""
 why = """\
   The ensemble pools dozens of teams' models of flu transmission and reporting, which \
   the history alone cannot see."""
@@ -129,9 +130,12 @@ method = """\
   CDC's median ensemble of the teams' quantile forecasts for the run date's round \
   (reference date: the Saturday after the run date), as first committed after the \
   cutoff, which the agents cannot see; CDC normally commits it on Thursday morning, \
-  after teams submit by 11 p.m. ET on Wednesday, and it is recorded the next day. Its \
-  national quantiles at the Task's levels for horizons 0 to 3 give the four target \
-  weeks. A round committed before the cutoff is not used."""
+  after teams submit by 11 p.m. ET on Wednesday, and it is recorded the next day, or \
+  within the week when a holiday delays the round. Its national quantiles at the Task's \
+  levels for horizons 0 to 3 give the four target weeks; horizon 0 is the week already \
+  under way on the run date. A round committed before the cutoff is not used. Between \
+  seasons (about June to early October) there is no round, and those run days have no \
+  B."""
 
 [metadata.agentic-forecasting.baseline.source]
 name = "CDC FluSight forecast hub, FluSight-ensemble (CC BY 4.0)"

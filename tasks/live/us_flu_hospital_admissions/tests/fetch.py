@@ -1,10 +1,9 @@
 """US weekly influenza hospital admissions: where the numbers for this target come from.
 
-The agentic-forecasting pipeline imports this file on the host, outside every episode; the
-sandbox's setup stage never runs it, and setup/run.sh makes it unreadable to the agent.
-It needs only the standard library and pandas. The pipeline passes `spec`, the target
-definition from task.yaml (`extras.agentic-forecasting` plus `params`), and turns the
-results into archived files.
+The agentic-forecasting pipeline imports this file on the host, outside every episode; ALE
+uploads tests/ only to verify, after the agent has finished. It needs only the standard
+library and pandas. The pipeline passes `spec`, [metadata.agentic-forecasting] of task.toml
+with the AF_* schedule merged in, and turns the results into archived files.
 
     snapshot(run_date, spec)  X_d: weekly admissions as first printed, the FluSight ensemble
                               as a run could see it, and the calendar
@@ -13,6 +12,8 @@ results into archived files.
                               committed after the cutoff
 
 The series is weekly: one row per MMWR week (Sunday to Saturday), dated on its Saturday.
+The target runs year-round. Between FluSight seasons (about June to early October) there
+is no round: X_d has no FluSight column and B has no forecasts.
 No credentials are needed: data.cdc.gov and GitHub answer anonymous requests. GITHUB_TOKEN,
 if set, lifts GitHub's limit of 60 API requests an hour per address; a run day makes three.
 """
@@ -326,6 +327,13 @@ def snapshot(run_date: date, spec: dict) -> dict:
     if current.empty or current.index.max() < start:
         raise RuntimeError("NHSN has no national admissions between history_start and the run")
     last_observed = current.index.max()
+    if last_observed != reference - pd.Timedelta(days=7):
+        # NHSN posts last week on the Wednesday, normally by 12:05 ET; without it the run would
+        # forecast from a staler history than the forecasters it is compared with.
+        week = (reference - pd.Timedelta(days=7)).date()
+        raise RuntimeError(
+            f"NHSN has not posted the week ending {week} (latest {last_observed.date()})"
+        )
     # The newest week as NHSN publishes it now, its first print; older weeks as first
     # printed where the hub's archive holds them, as revised since where it does not.
     firsts, copies_meta = first_prints(pd.Timestamp(run_date))
@@ -339,13 +347,17 @@ def snapshot(run_date: date, spec: dict) -> dict:
     target[past] = target[past].interpolate(limit_area="inside")
     rounds, rounds_meta = ensemble_rounds()
     visible = rounds[rounds["reference_date"] < reference]  # this run's round is B
-    flusight = flusight_as_seen(visible, index, target, reference, last_observed)
+    # Between seasons no round reaches the forecast window: X_d then has no FluSight column.
+    in_season = visible["target_end_date"].isin(index[~past]).any()
+    flusight = (
+        [flusight_as_seen(visible, index, target, reference, last_observed)] if in_season else []
+    )
     week = pd.Series([mmwr_week(day.date()) for day in index], index=index, name="week")
     holiday = holidays_per_week(index).rename("holiday")
-    series = pd.concat([target.rename("target"), flusight, week, holiday], axis=1).loc[start:]
+    series = pd.concat([target.rename("target"), *flusight, week, holiday], axis=1).loc[start:]
     shown = firsts.index >= start
     observed = nhsn[(nhsn["week"] >= start) & (nhsn["week"] <= last_observed)]
-    return {
+    x_d = {
         "series": series.rename_axis("timestamp"),
         "last_observed": last_observed.date(),
         "raw": {
@@ -389,6 +401,9 @@ def snapshot(run_date: date, spec: dict) -> dict:
             "holiday": "number of US federal holidays in the week, as observed",
         },
     }
+    if not in_season:
+        del x_d["covariate_notes"]["flusight"]
+    return x_d
 
 
 def truth(today: date, spec: dict) -> pd.Series:
