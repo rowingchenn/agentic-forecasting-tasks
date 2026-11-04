@@ -1,0 +1,127 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/vercel-anthropic-spend-share-live"
+keywords = ["forecasting", "live", "attention"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "18:30"
+AF_HORIZONS = "[1]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "vercel_anthropic_spend_share"
+title = "Anthropic's share of Vercel AI Gateway spend"
+question = """\
+  What share of all spend on Vercel's AI Gateway will go to Anthropic's models tomorrow \
+  (UTC)?"""
+taxonomy = "attention/ai-usage"
+driver = "behavioral"
+domain = "AI usage"
+region = "Global"
+unit = "% of spend"
+tradable = false
+summary = """\
+  Anthropic's share of all the money developers spend on AI models through Vercel's AI \
+  Gateway in one UTC day, as Vercel's public leaderboard of AI labs reports it. Which \
+  models developers and their coding tools choose moves it by several points from day to \
+  day and by tens of points over months; model releases, price changes and outages add \
+  information that history alone does not contain. Kalshi runs a market on the value of \
+  every even date, which gives the baseline."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Anthropic's share, in percent, of all spend through Vercel's AI Gateway on the target \
+  date, a UTC day: the field share_percent of the row with name \"anthropic\" and metric \
+  \"spend\" in the labs dataset (modality \"all\") of Vercel's AI Gateway leaderboard \
+  export, the data of the leaderboard's Spend chart, \"Share of AI Gateway spend across \
+  the top labs\". Every lab's share of the day is listed, and they sum to 100."""
+settlement = """\
+  First value the export shows for the date once a full day has passed since the date's \
+  UTC day ended, kept to its four decimals; later changes are not used. Kalshi settles \
+  its market on the chart's value at 10:00 ET the next day, rounded to one decimal; that \
+  matched the export's value rounded on 18 of the 19 dates settled by 2026-10-30, and \
+  was 0.1 lower on 2026-09-26."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Vercel AI Gateway leaderboard, labs, spend (open data, CC BY 4.0)"
+url = "https://vercel.com/ai-gateway/leaderboards/labs"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "16:45"
+every_days = 1
+first_run = "2026-11-02"
+
+[metadata.agentic-forecasting.x]
+history_start = "2025-10-01"
+frequency = "daily, UTC days"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Every lab's daily share of AI Gateway spend in the export, for the days X_d uses"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Spend share history"
+columns = ["target"]
+what = """\
+  The target itself, every UTC day from 2025-10-01, the first day Vercel's export holds, \
+  up to the last day that had ended at least 12 hours before Vercel built the answer \
+  read at the snapshot: normally the day before the run date. A missing day is filled \
+  linearly."""
+why = """\
+  The share follows the models developers adopt over weeks, so the recent level and \
+  trend carry most of the signal; it also swings by several points from one day to the \
+  next."""
+source = "Vercel AI Gateway leaderboard export (labs, spend)"
+url = "https://vercel.com/api/ai/leaderboard-export?dataset=labs&modality=all&format=json"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow"]
+what = "Day of the week of the UTC day (Monday = 0)."
+why = """\
+  Weekday and weekend use of the gateway differ in who is building and with which \
+  models, which can shift the mix of spend."""
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "kalshi-anthropic-spend"
+label = "Kalshi Anthropic spend-share market"
+name = "Median implied by Kalshi's KXANTHVSPEND market at the cutoff"
+kind = "point"
+max_quote_spread = 0.2
+method = """\
+  Kalshi lists an event for each even calendar date, such as KXANTHVSPEND-02NOV26, with \
+  nine contracts \"above k%\" at unevenly spaced strikes. A contract pays when the \
+  chart's value at 10:00 ET the next day, rounded to one decimal, exceeds k; it opens \
+  about four days before the date and closes at 23:59 ET on it. Each contract's price at \
+  the cutoff is the midpoint of its best bid and ask, used when both exist and are at \
+  most 0.20 apart, and is read as the probability that the share is at least k + 0.05. \
+  The prices are made non-increasing in k by pooling adjacent violators and joined \
+  linearly between quoted strikes; the point is the median, where they cross one half. \
+  The median rather than the most probable bin: bins between strikes span 0.2 to 3.7 \
+  points, so the most probable one is often merely the widest, and the median is the \
+  point that minimises the absolute error a point forecast is scored on. B is empty when \
+  the target date has no event (odd dates) or the quoted strikes do not bracket the \
+  median. It is recorded the next day from Kalshi's one-minute candlesticks."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Kalshi KXANTHVSPEND, Anthropic Vercel spend share"
+url = "https://api.elections.kalshi.com/trade-api/v2/markets?series_ticker=KXANTHVSPEND"
