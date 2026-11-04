@@ -58,6 +58,9 @@ domains:
       - id: bank-liquidity
         name: Bank liquidity
         examples: [Norges Bank structural liquidity, ECB excess liquidity]
+      - id: technology-adoption
+        name: Technology adoption
+        examples: [Vercel AI Gateway spend shares by lab]
 
   - id: markets
     name: Financial markets
