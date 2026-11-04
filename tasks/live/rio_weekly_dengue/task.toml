@@ -1,0 +1,97 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/rio-weekly-dengue-live"
+keywords = ["forecasting", "live", "health"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/Sao_Paulo"
+AF_CUTOFF = "18:45"
+AF_HORIZONS = "[1, 8]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "rio_weekly_dengue"
+title = "Rio de Janeiro weekly reported dengue cases"
+question = """\
+  How many reported dengue cases will InfoDengue record for Rio de Janeiro municipality \
+  in each of the next two Sunday-to-Saturday epidemiological weeks?"""
+taxonomy = "health/other-infectious-disease"
+driver = "epidemic"
+domain = "Non-respiratory infectious disease"
+region = "Rio de Janeiro municipality, Brazil (IBGE 3304557)"
+unit = "reported cases/week"
+tradable = false
+summary = """\
+  InfoDengue's reported dengue count (casos) for Rio de Janeiro municipality, not a \
+  nationwide total or the model nowcast casos_est. Each Saturday run forecasts the two \
+  epidemiological weeks that start the next day and a week later. A week's first counts \
+  are far from complete, so it is settled and scored on the count in the first release at \
+  least 28 days after it ends, 4 to 5 weeks after the week."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  InfoDengue alertcity API, geocode 3304557 and disease dengue: casos for the week \
+  identified by the Sunday data_iniSE date. The target date labels the week start, not \
+  its end. Use the published date, not a reconstructed ISO week or the model's \
+  casos_est. Counts are reported notifications, not necessarily lab-confirmed cases."""
+settlement = """\
+  The casos value in the first InfoDengue release dated (versao_modelo) at least 28 days \
+  after the week's Saturday; a row without a release date does not settle. Later \
+  revisions are not used, and missing weeks are unavailable, not zeros."""
+
+[metadata.agentic-forecasting.y.source]
+name = "InfoDengue / AlertaDengue, Rio de Janeiro municipal dengue surveillance"
+url = "https://info.dengue.mat.br/services/api"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "17:00"
+every_days = 7
+first_run = "2026-11-07"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-07"
+frequency = "weekly, Sunday week-start labels; no daily interpolation"
+given_to = "TSFMs only; agents find their own information"
+raw = ["""\
+  Each week's source Sunday date, epidemiological week, casos, release date \
+  (versao_modelo), and InfoDengue's nowcast casos_est with its bounds casos_est_min and \
+  casos_est_max, as published at the snapshot"""]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Published reported-case history"
+columns = ["target"]
+what = """\
+  casos of every completed week as published at the snapshot, through the latest week \
+  InfoDengue has released, normally the one that started 13 days before the run date; \
+  the week ending on the run date is left empty. Recent weeks are provisional: the latest \
+  is often about a third of its eventual count, the one before it about four fifths. \
+  Older weeks are as revised since, not as first released."""
+why = "Recent reports describe the epidemic trajectory, with known reporting-delay bias."
+source = "InfoDengue alertcity API, municipality 3304557, dengue"
+url = "https://info.dengue.mat.br/services/api"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of the Sunday label, including future weeks."
+why = "Annual seasonality affects dengue activity; these dates are known in advance."
+source = "computed; ISO week is a covariate, not the source epidemiological-week key"
