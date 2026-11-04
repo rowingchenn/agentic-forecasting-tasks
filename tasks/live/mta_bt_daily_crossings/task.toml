@@ -1,0 +1,107 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/mta-bt-daily-crossings-live"
+keywords = ["forecasting", "live", "mobility"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "15:45"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "mta_bt_daily_crossings"
+title = "MTA bridges and tunnels daily vehicle crossings"
+question = """\
+  How many vehicle crossings will MTA record at its seven bridges and two tunnels on \
+  each of the seven dates after the run day?"""
+taxonomy = "mobility/ground-transport"
+driver = "behavioral"
+domain = "Ground transport"
+region = "New York City, MTA bridges and tunnels"
+unit = "vehicle crossings/day"
+tradable = false
+summary = """\
+  Daily preliminary traffic estimates for mode BT in MTA's daily ridership and traffic \
+  dataset. Toll collection systems record crossings, not unique vehicles; a return trip \
+  can count twice. This excludes subway, rail and separate CBD/CRZ entry series."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  The count field of the single row with mode BT for each date label in MTA Daily \
+  Ridership and Traffic: Beginning 2020, current dataset sayj-mze2. The date label is \
+  used as published, with America/New_York for scheduling. Do not replace it with sums \
+  from an hourly or deprecated dataset, paid tolls, or unique vehicle counts."""
+settlement = """\
+  First completed-date value observed and retained by the pipeline; not necessarily the \
+  first version MTA published. Later reconciliation or revisions do not overwrite \
+  settlement. Weekday posting and processing can delay availability; missing/null counts \
+  and gaps are unavailable, not zeros or carry-forwards. A complete observed zero is \
+  valid. Source: MTA; derived forecasts do not imply endorsement."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Metropolitan Transportation Authority, daily ridership and traffic (mode BT)"
+url = "https://data.ny.gov/d/sayj-mze2"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "14:05"
+every_days = 7
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily date labels as published by MTA, including weekends"
+given_to = "TSFMs only; agents find their own information"
+raw = ["MTA daily date, mode BT and count records used in the curated history"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Daily crossing history"
+columns = ["target"]
+what = """\
+  BT counts from history_start through the latest published completed date as retrieved \
+  before cutoff. Dates after that remain unknown, even if completed."""
+why = "History carries weekly and annual traffic patterns and the recent level."
+source = "MTA daily ridership and traffic, sayj-mze2"
+url = "https://data.ny.gov/d/sayj-mze2"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "month", "holiday"]
+what = "Weekday (Monday = 0), month and US federal-holiday indicator."
+why = "Weekends, seasons and holidays can change traffic; dates are known in advance."
+source = "computed, US federal holiday calendar"
+
+[metadata.agentic-forecasting.baseline]
+system = "mta-bt-seasonal-364"
+label = "52-week seasonal naive (statistical)"
+name = "364-day reference, not an official or expert traffic forecast"
+kind = "point"
+method = """\
+  For each target date, use the observed count exactly 364 days (52 weeks) earlier from \
+  hash-checked frozen X_d. This preserves weekday, not necessarily holiday or calendar \
+  date. Next-day collection never reconstructs the reference from revised source \
+  history. Statistical benchmark proposed as an exception to the official/ expert \
+  forecast guideline, subject to maintainer acceptance."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Frozen run-day MTA BT crossing history"
+url = "https://data.ny.gov/d/sayj-mze2"
