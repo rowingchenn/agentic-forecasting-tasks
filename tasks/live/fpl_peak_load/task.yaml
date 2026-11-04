@@ -1,0 +1,119 @@
+spec_type: core/v1
+name: fpl-peak-load-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: America/New_York
+  cutoff: "16:00"
+  horizons: [1]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+metadata:
+  tags: [forecasting, live, energy]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: fpl_peak_load
+    title: FPL daily peak load
+    question: >-
+      How high will electricity demand on the FPL grid peak tomorrow?
+    taxonomy: energy/electricity-demand   # a leaf of taxonomy.yaml
+    driver: weather                       # a facet of taxonomy.yaml
+    domain: Electricity demand
+    region: Peninsular Florida (FPL balancing authority)
+    unit: MW
+    tradable: false
+    summary: >-
+      The highest hourly electricity demand of the day in the balancing authority of Florida
+      Power & Light, the state's largest utility. Weather drives it, and grid notices and
+      news add information that history alone does not contain.
+    y:
+      definition: >-
+        Maximum over the day's hours (hour ending 01:00 to 24:00, America/New_York) of the
+        hourly demand the BA reports to EIA on Form EIA-930, using the reported values, not
+        EIA's imputed ones. Hours that are missing, zero or negative, or more than 30% above
+        the hours on both sides (alone or as a pair) are left out; a day with more than one
+        such hour has no value.
+      source:
+        name: EIA-930 Hourly Electric Grid Monitor, demand of Florida Power & Light (FPL)
+        url: https://www.eia.gov/electricity/gridmonitor/
+      settlement: >-
+        The value published two days after the day: BAs revise the previous day's hours in
+        a daily file due by 7:00 ET the next morning, and a few more within two days.
+    schedule:
+      snapshot: "13:05"         # when a run day starts, in params.timezone
+      every_days: 1             # a run day every day from first_run
+      first_run: "2026-10-28"
+    x:
+      history_start: "2024-01-01"
+      frequency: daily, with the hourly demand it is derived from
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: Peak load history
+          columns: [target]
+          what: >-
+            The target itself, every day up to the day before the run date, as published at
+            the snapshot (the last two days may still be revised); the rare day without a
+            value is filled in linearly from its neighbours.
+          why: Demand is persistent and seasonal; the history carries level, trend and weekly shape.
+          source: EIA-930 (930-api)
+          url: https://www.eia.gov/electricity/gridmonitor/
+        - name: Temperature at five load-centre cities
+          columns: ["tmax_<city>", "tmin_<city>"]
+          what: >-
+            Daily maximum and minimum air temperature in Miami, West Palm Beach, Fort Myers,
+            Sarasota and Daytona Beach: reanalysis for past days, the ECMWF forecast issued
+            before the run for the forecast window.
+          why: >-
+            Air conditioning and electric heating drive peak demand, so tomorrow's
+            temperature is the strongest single predictor.
+          source: Open-Meteo (ERA5 reanalysis, ECMWF IFS 0.25° forecast)
+          url: https://open-meteo.com/en/docs/ecmwf-api
+        - name: Calendar
+          columns: [dow, holiday]
+          what: Day of week and US federal holidays.
+          why: Offices and industry use less power on weekends and holidays.
+          source: computed
+      raw:
+        - Hourly demand reported by FPL to EIA-930
+        - Hourly temperature forecast per city (ECMWF IFS via Open-Meteo)
+    baseline:
+      system: fpl-official
+      label: FPL official
+      name: Florida Power & Light day-ahead demand forecast reported to EIA-930
+      kind: point
+      source:
+        name: EIA-930 Hourly Electric Grid Monitor, day-ahead demand forecast of FPL
+        url: https://www.eia.gov/electricity/gridmonitor/
+      method: >-
+        The maximum over the target day's hours of the hourly day-ahead demand forecast the
+        BA reports to EIA-930, as first published. EIA posts it on the target day itself, by
+        about 11:00 ET and after the run day's cutoff, so it is recorded only by a baseline
+        fetch made on the target day; later revisions are never used. The BA does not
+        publish when it made the forecast, so it may use information from after the cutoff.

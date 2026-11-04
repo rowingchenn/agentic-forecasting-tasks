@@ -1,0 +1,124 @@
+spec_type: core/v1
+name: vancouver-aqhi-live
+image: {kind: container}
+
+resources: {cpus: 4, memory_mb: 8192, sudo: false}
+network: {mode: open}
+timeouts: {setup: 300, agent: 5400, verify: 120}
+artifacts: [/home/user/output]
+
+params:
+  # environment_note and materials_note are what differs between this Task and its mock
+  # replays; af/mock.py in the pipeline sets the mock versions.
+  environment_note: >-
+    You have unrestricted internet access. Apart from task.json, no data is provided: find
+    the information you need yourself, using any sources, tools, software, or models.
+  materials_note: >-
+    Save copies of the external materials you found useful for this forecast, such as data
+    you downloaded, articles, reports, or forecasts by others, as regular files (not
+    symbolic links) under `/home/user/output/collected/`. Save only what you obtained from
+    outside this environment, not your own code, analyses, or forecasts. List each saved
+    file in `/home/user/output/collected/index.jsonl`, one JSON object per line:
+    `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>",
+    "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+  # The forecast every run day asks for. setup/run.sh writes it into task.json for the
+  # agent, verify/ checks submissions against it, and the pipeline schedules by it.
+  timezone: America/Vancouver
+  cutoff: "22:00"
+  horizons: [1, 2]
+  quantile_levels: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
+
+metadata:
+  tags: [forecasting, live, environment]
+  network_justification: >-
+    Live forecasting measures how well the agent acquires its own information from the
+    open internet; restricting access would remove the capability being evaluated.
+
+# The forecasting target this Task measures: the (y, Δ, H, X, B) tuple of the research
+# draft, with Δ, H and the quantile levels in params above. setup/fetch.py fetches the
+# numbers; the pipeline reads everything else here and the website displays it.
+extras:
+  agentic-forecasting:
+    target: vancouver_aqhi
+    title: Metro Vancouver (northeast) daytime AQHI
+    question: >-
+      How high will the Air Quality Health Index in northeast Metro Vancouver get
+      during the day tomorrow and the day after?
+    taxonomy: environment/air-quality   # a leaf of taxonomy.yaml
+    driver: weather                     # a facet of taxonomy.yaml
+    domain: Air quality
+    region: Metro Vancouver - NE, British Columbia
+    unit: AQHI
+    tradable: false
+    summary: >-
+      The highest hourly Air Quality Health Index of the day in the northeast of Metro
+      Vancouver, as observed by Environment and Climate Change Canada (ECCC). The index
+      combines ozone, nitrogen dioxide and fine particulate matter into a health-risk scale
+      from 1 to 10+. Weather drives it, and wildfire smoke, ECCC's forecasts and air quality
+      statements add information that history alone does not contain.
+    y:
+      definition: >-
+        Maximum of ECCC's hourly observed AQHI for the community Metro Vancouver - NE
+        (JBXHZ) over the hours stamped 07:00 to 18:00 local time (America/Vancouver), ECCC's
+        daytime forecast period of 06:00 to 18:00; values as published, with two decimals,
+        and "10+" counted as 11. A day counts once at least 9 of its 12 hours have values.
+      source:
+        name: ECCC MSC Datamart, AQHI observations for Metro Vancouver - NE (JBXHZ)
+        url: https://dd.weather.gc.ca/today/air_quality/aqhi/
+      settlement: >-
+        First published value: the hourly observations as posted in ECCC's realtime file the
+        day after; ECCC's later backfill revisions are not used.
+    schedule:
+      snapshot: "19:05"         # when a run day starts, in params.timezone
+      every_days: 1             # a run day every day from first_run
+      first_run: "2026-10-28"
+    x:
+      history_start: "2024-01-01"
+      frequency: daily, with the hourly observations it is derived from
+      given_to: TSFMs only; agents find their own information
+      groups:
+        - name: AQHI history
+          columns: [target]
+          what: >-
+            The target itself, every day up to the run date, whose daytime hours are
+            observed by the snapshot; the rare day with too few hours is filled in linearly
+            from its neighbours.
+          why: >-
+            Air quality persists for a day or two with the weather pattern behind it, and
+            the history carries the season's level.
+          source: ECCC MSC Datamart
+          url: https://dd.weather.gc.ca/today/air_quality/aqhi/
+        - name: Weather at the community
+          columns: [tmax, precip, wind_u, wind_v, radiation]
+          what: >-
+            Daily maximum temperature, precipitation, the day's strongest wind as eastward
+            and northward components (from its speed and dominant direction) and solar
+            radiation at the community: reanalysis for past days, the ECMWF forecast issued
+            before the run for the forecast window.
+          why: >-
+            Heat and sunshine make ozone, calm air lets pollution build up, rain washes
+            particles out, and the wind decides whose pollution and smoke arrive.
+          source: Open-Meteo (ERA5 reanalysis, ECMWF IFS 0.25° forecast)
+          url: https://open-meteo.com/en/docs/ecmwf-api
+        - name: Calendar
+          columns: [dow]
+          what: Day of week.
+          why: Traffic, a source of nitrogen dioxide, is lighter on weekends.
+          source: computed
+      raw:
+        - Hourly AQHI observations for the community (ECCC MSC Datamart)
+        - Daily weather forecast at the community (ECMWF IFS via Open-Meteo)
+    baseline:
+      system: eccc-official
+      label: ECCC official
+      name: ECCC AQHI forecast
+      kind: point
+      source:
+        name: ECCC MSC Datamart, AQHI forecasts for Metro Vancouver - NE (JBXHZ)
+        url: https://dd.weather.gc.ca/today/air_quality/aqhi/
+      method: >-
+        The AQHI forecast for the community that is current at the snapshot: the 17:00
+        issue of the run day or an amendment issued after it. Its "Tomorrow" period gives
+        the day after the run date and its "Day 3" period the day after that; each is
+        ECCC's forecast maximum for 06:00 to 18:00, a whole number, with 10+ counted as 11.
+        Amendments issued after the snapshot are not used.

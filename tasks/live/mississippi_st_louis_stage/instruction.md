@@ -3,7 +3,7 @@ You have about 90 minutes.
 
 ## The target
 
-For each calendar day (midnight to midnight, America/Chicago), the target is the mean, in feet,
+For each calendar day (midnight to midnight, ${timezone}), the target is the mean, in feet,
 of the gauge height readings at *Mississippi River at St. Louis, MO*: USGS site 07010000,
 parameter 00065, which the National Weather Service lists as gauge EADM7 and shows with the
 same readings. Readings come every 30 minutes; a day's value is the mean of all its
@@ -16,10 +16,10 @@ elevation and once-a-day readings, such as a 7 a.m. stage, measure different qua
 ## Inputs and environment
 
 `/home/user/input/task.json` gives the run date, the target dates (the run date plus
-[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] days), the submission cutoff (18:40 America/Chicago on the run date), and the
-quantile levels [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9].
+${horizons} days), the submission cutoff (${cutoff} ${timezone} on the run date), and the
+quantile levels ${quantile_levels}.
 
-You have unrestricted internet access. Apart from task.json, no data is provided: find the information you need yourself, using any sources, tools, software, or models.
+${environment_note}
 
 ## Output
 
@@ -47,4 +47,4 @@ probability score (CRPS) of its quantiles, so both the center and the spread mat
 
 ## Collected materials
 
-Save copies of the external materials you found useful for this forecast, such as data you downloaded, articles, reports, or forecasts by others, as regular files (not symbolic links) under `/home/user/output/collected/`. Save only what you obtained from outside this environment, not your own code, analyses, or forecasts. List each saved file in `/home/user/output/collected/index.jsonl`, one JSON object per line: `{"path": "<path relative to collected/>", "source": "<URL you obtained it from>", "note": "<why it is useful>"}`. Write an empty `index.jsonl` if you saved nothing.
+${materials_note}
