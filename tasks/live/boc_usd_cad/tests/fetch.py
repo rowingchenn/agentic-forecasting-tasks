@@ -1,4 +1,11 @@
-"""Host-only Bank of Canada USD/CAD reference data; no credentials.
+"""Bank of Canada USD/CAD daily average: where the numbers for this target come from.
+
+The pipeline imports this file on the host, outside every episode. No credentials: the
+Bank's Valet API is keyless.
+
+    snapshot(run_date, spec)  X_d: the rate history through the run date, as published now
+    truth(today, spec)        every completed day's rate as published now
+    baseline(run_date, spec)  no change from the latest rate published by the cutoff
 
 Bank of Canada source data; calendar carry-forwards and forecasts are derived, not
 Bank publications. Retain attribution and indicate transformations on redistribution.
@@ -6,14 +13,11 @@ Terms: https://www.bankofcanada.ca/terms/ (including Exchange Rates and third-pa
 """
 from __future__ import annotations
 
-import hashlib
 import json
 import math
 import time
 from datetime import date, datetime, time as clock, timedelta
-from decimal import Decimal, InvalidOperation
 from functools import cache
-from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -121,10 +125,10 @@ def _daily(start, end):
         if isinstance(value, bool) or value is None:
             raise ValueError(f"Missing reference rate on {day}; retry after publication.")
         try:
-            rate = Decimal(str(value))
-        except InvalidOperation:
-            raise ValueError("Invalid decimal reference rate.") from None
-        if not rate.is_finite() or rate <= 0:
+            rate = float(value)  # four decimals; the pipeline writes series.csv with %.10g
+        except (TypeError, ValueError):
+            raise ValueError("Invalid reference rate.") from None
+        if not math.isfinite(rate) or rate <= 0:
             raise ValueError("Reference rates must be finite and positive.")
         if day in rates or not seed <= day <= end or not publication_day(day):
             raise ValueError("Duplicate, out-of-range or unexpected publication date; review calendar.")
@@ -132,9 +136,7 @@ def _daily(start, end):
     expected = {d.date() for d in pd.date_range(seed, end) if publication_day(d.date())}
     if set(rates) != expected:
         raise ValueError("Missing expected publication-day rate; do not fill a delayed observation.")
-    # af.target writes binary floats with %.2f. Exact decimal objects preserve the
-    # published four-decimal FX precision in CSV; downstream readers infer numbers.
-    observed = pd.Series(rates, dtype=object).sort_index()
+    observed = pd.Series(rates, dtype=float).sort_index()
     observed.index = pd.to_datetime(observed.index)
     index = pd.date_range(seed, end, name="timestamp")
     daily = observed.reindex(index).ffill().loc[str(start):].rename("target")
@@ -146,7 +148,7 @@ def _daily(start, end):
 def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
     start = date.fromisoformat(spec["x"]["history_start"])
-    through = run_date - timedelta(days=1)
+    through = run_date  # its rate is published by 16:30 ET, before the 17:05 start
     history, raw = _daily(start, through)
     _guard(run_date, spec)
     index = pd.date_range(start, run_date + timedelta(days=max(spec["horizons"])), name="timestamp")
@@ -173,41 +175,19 @@ def truth(today: date, spec: dict) -> pd.Series:
     return _daily(date.fromisoformat(spec["x"]["history_start"]), today - timedelta(days=1))[0]
 
 
-def _reference(run_date, spec):
-    root = (Path(__file__).resolve().parents[3] / "mock" / spec["target"] /
-            str(run_date) / "oracle" / "assets" / "x")
-    if not root.exists():
-        result = snapshot(run_date, spec)  # direct same-day pre-cutoff smoke test only
-        return result["series"]["target"], result["last_observed"], result["sources"]["as_of"], None
-    manifest = json.loads((root / "MANIFEST.json").read_text())
-    for name in ("task.json", "series.csv"):
-        if hashlib.sha256((root / name).read_bytes()).hexdigest() != manifest["files"].get(name):
-            raise ValueError(f"Archived {name} fails its snapshot hash.")
-    task = json.loads((root / "task.json").read_text())
-    last = date.fromisoformat(task["last_observed"])
-    as_of = datetime.fromisoformat(manifest["sources"]["as_of"])
-    if (task["run_date"] != str(run_date) or task["task"] != spec["target"]
-            or manifest["snapshot"] != f"{spec['target']}/{run_date}"
-            or last != run_date - timedelta(days=1) or as_of.tzinfo is None
-            or as_of.astimezone(ZONE).date() != run_date or as_of >= _cutoff(run_date, spec)):
-        raise ValueError("Not a valid pre-cutoff run-day snapshot.")
-    history = pd.read_csv(root / "series.csv", index_col="timestamp", parse_dates=True)["target"]
-    if not history.index.is_unique:
-        raise ValueError("Duplicate dates in frozen history.")
-    return history, last, as_of.isoformat(), manifest["snapshot"]
-
-
 def baseline(run_date: date, spec: dict) -> dict:
-    if run_date > _now().date():
-        raise RuntimeError("Cannot build a future run's baseline.")
-    history, last, as_of, frozen = _reference(run_date, spec)
-    point = float(history.loc[pd.Timestamp(last)])
-    if not math.isfinite(point) or point <= 0:
-        raise ValueError("Invalid no-change reference rate.")
+    """No change from the latest rate published by the cutoff: the run date's (by 16:30 ET),
+    or on a Bank holiday the last one before it, for every target date. Read from Valet."""
+    source = {"name": "No-change reference: the latest Bank of Canada FXUSDCAD rate at the cutoff",
+              "url": API, "attribution": "Bank of Canada; derived forecast, no endorsement."}
+    if _now() < _cutoff(run_date, spec):
+        return {"source": source, "forecasts": []}
+    published = run_date
+    while not publication_day(published):
+        published -= timedelta(days=1)
+    point = float(_daily(published, published)[0].iloc[0])
     return {
-        "source": {"name": "No-change reference (statistical, not expert)", "url": API,
-                   "as_of": as_of, "last_observed": str(last), "snapshot": frozen,
-                   "attribution": "Bank of Canada; derived forecast, no endorsement."},
+        "source": source | {"rate_date": str(published)},
         "forecasts": [{"target_date": str(run_date + timedelta(days=h)), "point": point}
                       for h in spec["horizons"]],
     }
