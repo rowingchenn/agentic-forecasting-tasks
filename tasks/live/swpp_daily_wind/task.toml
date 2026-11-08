@@ -1,0 +1,99 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/swpp-daily-wind-live"
+keywords = ["forecasting", "live", "energy", "wind"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/Chicago"
+AF_CUTOFF = "13:50"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "swpp_daily_wind"
+title = "Southwest Power Pool daily non-battery wind generation"
+question = """\
+  How much net electricity will SWPP report from wind without integrated battery \
+  storage on each of the next seven Central-time days?"""
+taxonomy = "energy/renewable-generation"
+driver = "physical"
+domain = "Energy"
+region = "Southwest Power Pool balancing authority, United States"
+unit = "MWh/day"
+tradable = false
+summary = """\
+  Daily net generation reported by Southwest Power Pool under EIA-930 fuel code WND, \
+  wind without integrated battery storage. Wind conditions, installed capacity and \
+  curtailment affect output. This is the reported balancing-authority series, not \
+  all wind production in the states it serves."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  For Balancing Authority SWPP and each Data Date in America/Chicago, sum the raw \
+  hourly Net Generation (MW) from Wind without Integrated Battery Storage column \
+  in EIA-930's six-month BALANCE CSVs. Each one-hour value contributes the same \
+  numerical quantity of MWh. Require exactly the UTC hour endings for the full \
+  local day, 23, 24 or 25 hours, and a finite WND value at every hour. Zero is a \
+  valid value; missing values do not contribute zero. Do not add WNB, other fuel \
+  categories, or imputed/adjusted columns. Historical files before July 2024 use \
+  an unsplit Wind label and are excluded."""
+settlement = """\
+  Settle on the first complete daily value recorded from EIA after the local day \
+  ends; later revisions do not replace it. A day with any missing WND observation \
+  remains unsettled until complete; never interpolate, carry forward or publish a \
+  partial sum. Historical bootstrap data are the vintage downloaded, not a \
+  reconstruction of original releases. EIA says yesterday's fuel-generation data \
+  are typically available by 11:00 Eastern; this is not a guaranteed deadline."""
+
+[metadata.agentic-forecasting.y.source]
+name = "U.S. Energy Information Administration, EIA-930 Hourly Electric Grid Monitor"
+url = "https://www.eia.gov/electricity/gridmonitor/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:00"
+every_days = 1
+# The maintainer sets first_run when enabling the timer.
+first_run = "2026-11-09"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-07-01"
+frequency = "daily, America/Chicago reporting days"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Raw SWPP hourly WND and WNB fields, UTC hour endings, and daily completeness audit"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Reported wind generation history"
+columns = ["target"]
+what = """\
+  Complete-day WND totals from July 2024 through the latest published completed \
+  reporting day before the run. Incomplete dates stay empty, and publication delay \
+  can leave a gap at the end. Every fetch rereads the revisable public history."""
+why = "Recent output and seasonal history describe wind-generation levels and variability."
+source = "U.S. Energy Information Administration, EIA-930, SWPP, fuel code WND"
+url = "https://www.eia.gov/electricity/gridmonitor/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "month", "day_of_year"]
+what = "Central-time weekday (Monday=0), month (1-12), and day of year (1-366), including future dates."
+why = "Calendar variables describe seasonal wind patterns and operating schedules."
+source = "computed"
