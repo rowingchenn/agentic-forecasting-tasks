@@ -1,0 +1,166 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/nz-otahuhu-daily-price-live"
+keywords = ["forecasting", "live", "energy"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "Pacific/Auckland"
+AF_CUTOFF = "12:00"
+AF_HORIZONS = "[1]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "nz_otahuhu_daily_price"
+title = "New Zealand wholesale electricity price at Otahuhu"
+question = """\
+  What will tomorrow's average wholesale electricity price at Otahuhu, Auckland, be over \
+  all of the day's half-hourly trading periods, as the Electricity Authority first \
+  publishes it?"""
+taxonomy = "energy/energy-prices"
+driver = "weather"
+domain = "Energy prices"
+region = "Otahuhu (grid node OTA2201), Auckland, New Zealand"
+unit = "NZ$/MWh"
+tradable = false
+summary = """\
+  The daily average of the half-hourly wholesale electricity price at Otahuhu (OTA2201), \
+  the grid node for Auckland, in New Zealand's nodal market. Prices follow hydro storage \
+  and inflows, wind, gas supply, demand and plant outages: the daily average reached \
+  NZ$878/MWh in August 2024 and fell to about NZ$0.01 in January 2026. The pricing \
+  manager publishes forecast prices from the market's price-responsive schedules through \
+  the day, and the next day's forecast is the comparison. Prices: Electricity Authority, \
+  EMI (www.emi.ea.govt.nz), whose own works the Authority licenses under CC BY 4.0, with \
+  exclusions; the forecast prices are prepared by the pricing manager and published by the \
+  Authority on EMI. History starts in January 2023."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  The mean of the energy prices at grid node OTA2201 (Otahuhu), in NZ$/MWh, over all \
+  trading periods of the target date, a New Zealand calendar day: 48 half-hours, or 46 and \
+  50 on the days the clocks change, each counted once. The prices are those of EMI's final \
+  and interim energy price files (DollarsPerMegawattHour where PointOfConnection is \
+  OTA2201)."""
+settlement = """\
+  The interim prices EMI first publishes for the day, in \
+  `YYYYMMDD_FinalEnergyPrices_I.csv`, posted in EMI's batch at about 07:05 NZ the next \
+  morning; a file counts only with a price for every trading period of the day. The final \
+  prices, declared later and unchanged unless a pricing error claim is made, replace the \
+  file in a later batch: the next morning's for a Monday-to-Thursday trading day, so the \
+  file is up for about 24 hours, and later at weekends and holidays. The pipeline reads \
+  the file at its 10:10 call. A day whose interim file it missed settles on the final \
+  prices, from EMI's single-node report, once EMI shows them, or, after a week, on that \
+  report as published then."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Electricity Authority, EMI: final and interim energy prices"
+url = "https://www.emi.ea.govt.nz/Wholesale/Datasets/DispatchAndPricing/FinalEnergyPrices"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "10:10"
+every_days = 1
+first_run = "2026-11-18"
+
+[metadata.agentic-forecasting.x]
+history_start = "2023-01-01"
+frequency = "daily, one row per New Zealand trading day"
+given_to = "TSFMs only; agents find their own information"
+raw = [
+  "The daily mean price, number of half-hours and status (Interim or Final) at OTA2201, from EMI's single-node report",
+  "The first print read for each day, from EMI's interim price files",
+  "The PRSL forecast read for each run date, with its run",
+]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Price history"
+columns = ["target"]
+what = """\
+  The daily mean price at OTA2201 from 2023-01-01, two months into real-time pricing, to \
+  the day before the run date. The newest day is its interim first print, posted that \
+  morning; earlier days come from EMI's single-node report as published at the start, \
+  final prices except for the newest few days. A day without a price for every trading \
+  period is left empty; none was from 2023-01 to 2026-11."""
+why = """\
+  Prices persist from day to day with hydro storage, gas supply and plant outages, and the \
+  history carries their level, the weekly cycle and the seasons."""
+source = "Electricity Authority, EMI: single-node report (CLA3WR) and interim price files"
+url = "https://www.emi.ea.govt.nz/Wholesale/Reports/CLA3WR"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["weekday", "month"]
+what = """\
+  Day of the week (0 for Monday to 6 for Sunday) and month of each trading day, including \
+  the target date."""
+why = """\
+  From 2023-01 to 2026-11 the price averaged NZ$148/MWh on weekdays and NZ$121 at \
+  weekends, when demand is lower, and monthly means ranged from NZ$70 (October) to \
+  NZ$216 (August)."""
+source = "computed"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier PRSL forecast"
+columns = ["prsl"]
+expert = true
+what = """\
+  The pricing manager's PRSL forecast of each day's mean price at OTA2201, issued the day \
+  before by B's rule: the first run stamped from 12:00 that covers every trading period of \
+  the day. A past day without one carries the previous day's price. The run date's row \
+  holds the forecast for the run date issued the day before, the previous cycle's issue, \
+  and carries it to the target date; B's own issue, from 12:10 on the run date, is never \
+  included. Runs are read from EMI's daily zips and kept on the host, a year back at most. \
+  On the first run day the snapshot reads the day before's run and up to nine older ones; \
+  afterwards the pipeline's baseline call reads the newest run each morning and the \
+  snapshot up to ten older ones, until the year is complete, unless a one-time warm-up has \
+  filled it."""
+why = """\
+  The schedule sees generators' offers, hydro and thermal plant availability, the demand \
+  forecast and transmission limits, which the price history does not contain. For the 402 \
+  days from 2025-10-02 to 2026-11-07 it missed the day's mean by NZ$17.62/MWh on average, \
+  against 30.14 for the mean of the seven newest days and 31.17 for the newest day."""
+source = """\
+  Forecast prices prepared by the pricing manager, published by the Electricity Authority \
+  on EMI (www.emi.ea.govt.nz): long price-responsive schedule (PRSL)"""
+url = "https://www.emi.ea.govt.nz/Wholesale/Datasets/ForecastPrices/PRSL"
+
+[metadata.agentic-forecasting.baseline]
+system = "nz-prsl-forecast"
+label = "Pricing manager's PRSL forecast"
+name = "PRSL forecast of the next day's mean price at OTA2201"
+kind = "point"
+visible_to_agents = false
+method = """\
+  The mean, over every trading period of the day after the run date, of the forecast \
+  prices at OTA2201 in the first run of the long price-responsive schedule (PRSL) stamped \
+  at or after the 12:00 cutoff that covers all of that day. The schedule runs every two \
+  hours at about ten past, each run covering 64 trading periods from about four hours \
+  ahead, so the 12:10 run is the first to reach the end of the next day. Of 402 run days \
+  from 2025-10-01, that run was stamped 12:10 on 397 and 12:19 to 12:44 on the other five, \
+  never earlier. Before the 50-half-hour day in April it ends two half-hours short, and the \
+  14:10 run is B. The agents cannot see B, issued after the cutoff. EMI posts each day's \
+  runs at 16:10 UTC, 05:10 NZDT or 04:10 NZST the next morning, and the pipeline reads B \
+  at its 10:10 call that morning."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = """\
+  Forecast prices prepared by the pricing manager, published by the Electricity Authority \
+  on EMI (www.emi.ea.govt.nz): long price-responsive schedule (PRSL)"""
+url = "https://www.emi.ea.govt.nz/Wholesale/Datasets/ForecastPrices/PRSL"
