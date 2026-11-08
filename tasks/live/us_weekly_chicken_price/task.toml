@@ -1,0 +1,76 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-chicken-price-live"
+keywords = ["forecasting", "live", "economy", "consumer-prices", "chicken"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "15:50"
+AF_HORIZONS = "[7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_chicken_price"
+title = "US weekly advertised chicken-breast price"
+question = "What national advertised price per pound will USDA report for fresh conventional boneless/skinless chicken breast in value packs for next Friday's reporting week?"
+taxonomy = "economy/consumer-prices"
+driver = "economic"
+domain = "Economy and labor"
+region = "United States, including Alaska and Hawaii"
+unit = "USD/lb"
+tradable = false
+summary = "A weekly store-count-weighted advertised promotional retail price, not a transaction average, CPI or wholesale price. Promotions, input costs and retailer selection affect the series."
+
+[metadata.agentic-forecasting.y]
+definition = "USDA AMS report 2756, Report Details: commodity Chicken, section Parts, condition Fresh, environment Conventional, region NATIONAL, price_unit Per lb; type Breast, Boneless/Skinless and package_size Value. Before September 2024 type is BREAST, BONELESS/SKINLESS, VALUE PACK with null package_size. Use price_avg, the national store-count-weighted advertised price. A Friday labels the reporting week; early holiday Thursday report ends retain the Friday of that ISO week. No mixing other products or packs."
+settlement = "The first value captured from the official report's structured data for that Friday reporting-week label. The pipeline retains the first recorded value and does not replace it with revisions. Missing rows remain unsettled, never zero or carried forward. Historical bootstrap observations are downloaded vintages checked against archived PDFs, not reconstructed first releases. A missing live week or changed schema requires maintainer review; skip rather than substitute another product."
+
+[metadata.agentic-forecasting.y.source]
+name = "USDA Agricultural Marketing Service, Weekly Grocery Store Chicken Feature Activity (2756)"
+url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "14:00"
+every_days = 7
+# Placeholder; maintainer sets this Friday when enabling the timer.
+first_run = "2026-11-13"
+
+[metadata.agentic-forecasting.x]
+history_start = "2021-01-01"
+frequency = "weekly, Friday reporting-week labels; no daily interpolation"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Verified 2021-2023 historical bootstrap with official PDF links", "USDA Report Details rows from 2024 onward"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Weekly advertised price history"
+columns = ["target"]
+what = "National advertised prices from January 2021 through the current Friday's report. Future prices are empty; advertising store counts are retained in raw data only. The run stops if the current report or any intervening week is missing."
+why = "Recent promotion prices describe the current level; earlier years provide context for possible seasonality."
+source = "USDA AMS report 2756; historical bootstrap checked against original PDFs"
+url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week and month of the Friday reporting-week label, known through the target week."
+why = "Retail promotion calendars and food demand can vary with the season."
+source = "computed"
