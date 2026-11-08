@@ -1,0 +1,97 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-gasoline-price-live"
+keywords = ["forecasting", "live", "energy", "gasoline"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "13:50"
+AF_HORIZONS = "[4]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_gasoline_price"
+title = "US weekly regular gasoline retail price"
+question = """\
+  What will EIA first report for the US regular all-formulations retail gasoline \
+  price observed on the Monday after the run date, in dollars per gallon?"""
+taxonomy = "energy/energy-prices"
+driver = "economic"
+domain = "Energy"
+region = "United States"
+unit = "USD/gallon"
+tradable = false
+summary = """\
+  The national volume-weighted regular gasoline retail price, including taxes, \
+  observed at 08:00 local time on Mondays and normally published Tuesday morning. \
+  Crude oil costs, refining and distribution conditions, and seasonal demand affect \
+  pump prices. This retail survey average is not a tradable futures or spot contract."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  EIA series EMM_EPMR_PTE_NUS_DPG, weekly US regular all formulations retail gasoline \
+  price, including taxes, in USD per gallon to three decimal places. The date labels \
+  the Monday observation at 08:00 local time at sampled retail outlets. It is a \
+  volume-weighted national survey estimate, not a Monday-Sunday average, premium or \
+  all-grades gasoline, diesel, or a wholesale/futures price."""
+settlement = """\
+  Settle on the first published price recorded from EIA for the target Monday. \
+  EIA currently releases the estimate around 10:00 Eastern on Tuesday, or Wednesday \
+  around listed government holidays, still representing Monday's price. Later \
+  revisions do not replace recorded settlement. Missing observations remain \
+  unsettled, never zero or a carried-forward price. Historical bootstrap data use \
+  the downloaded vintage and do not reconstruct original releases."""
+
+[metadata.agentic-forecasting.y.source]
+name = "U.S. Energy Information Administration, Gasoline and Diesel Fuel Update"
+url = "https://www.eia.gov/petroleum/gasdiesel/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:00"
+every_days = 7
+# Placeholder: the maintainer sets first_run when enabling the timer.
+first_run = "2026-11-12"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "weekly, Monday observation dates"
+given_to = "TSFMs only; agents find their own information"
+raw = ["EIA weekly US regular all-formulations retail gasoline prices, USD per gallon"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Weekly gasoline price history"
+columns = ["target"]
+what = """\
+  Monday-dated weekly prices from January 2024 through the current week's Monday, \
+  as published before Thursday's start. Observations retain three-decimal source \
+  precision. Missing weeks remain empty; weekly observations are not repeated \
+  across daily rows. A missing current-week price causes the run to stop."""
+why = "Recent prices describe the current level; past years show recurring seasonal variation."
+source = "EIA, series EMM_EPMR_PTE_NUS_DPG, weekly"
+url = "https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s=EMM_EPMR_PTE_NUS_DPG&f=W"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and calendar month of each Monday observation, including the next target date."
+why = "Seasonal changes in driving demand and gasoline formulation affect retail prices."
+source = "computed"
