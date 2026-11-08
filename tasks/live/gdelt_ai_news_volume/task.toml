@@ -1,0 +1,115 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/gdelt-ai-news-volume-live"
+keywords = ["forecasting", "live", "attention"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "UTC"
+AF_CUTOFF = "10:00"
+AF_HORIZONS = "[1, 2, 3, 4, 5, 6, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "gdelt_ai_news_volume"
+title = "GDELT daily news articles about AI"
+question = """\
+  How many distinct news articles about artificial intelligence, by a fixed rule on their \
+  web addresses, will GDELT's daily event file list for each of the next seven UTC days?"""
+taxonomy = "attention/media-and-social"
+driver = "behavioral"
+domain = "Online attention"
+region = "Worldwide, news in English"
+unit = "articles/day"
+tradable = false
+summary = """\
+  How many news articles about artificial intelligence GDELT lists in its daily event \
+  file for a UTC day. GDELT monitors news media worldwide and lists each article it coded \
+  at least one event from; an article counts by a fixed rule on its web address: the \
+  word \"ai\", or \"artificial intelligence\", in the URL's path. Summits, product \
+  launches, policy fights and warnings about AI move it from day to day; weekends have \
+  less than half a weekday's count, and holidays fewer too."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  For the UTC date D, the number of distinct SOURCEURL values, the 58th and last \
+  tab-separated field of a line, in GDELT 1.0's daily event export for D \
+  (https://data.gdeltproject.org/events/YYYYMMDD.export.CSV.zip) whose URL is about AI by \
+  this rule: with the letters A to Z in lower case, the URL is cut at its first ? or # \
+  and stripped of its scheme and host (everything before the first / after ://, or, in a \
+  URL without ://, before its first /; with no / left, the URL does not count), and the \
+  rest, split at every run of characters other than a to z and 0 to 9, has the piece \
+  \"ai\", or \"artificial\" directly followed by \"intelligence\". Lines without 58 fields are \
+  skipped. It counts the articles GDELT coded at least one event from, not every article \
+  about AI published that day. Of 150 counted URLs read one by one, 147 were about AI; \
+  the other three named the artist Ai Weiwei or a company called Ultragreen.ai."""
+settlement = """\
+  The first published file for D, which GDELT posts at 07:00 UTC on D+1. The 657 files \
+  for 2025-01-01 to 2026-11-06 were all written between 07:00:05 and 07:00:14 UTC the \
+  next day and none was rewritten later: the stored version of every one was created \
+  within a second of its Last-Modified time, and its metadata never changed. A date \
+  whose file is missing, cannot be read, or has no line of 58 fields is not settled, \
+  never taken as zero; GDELT posted no files for 2025-06-14 to 2025-07-01. A date still \
+  without a file more than 14 days later, once a later date's file has been read, is \
+  treated as having none, and a file posted after that is not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "The GDELT Project, GDELT 1.0 Event Database daily event files"
+url = "https://www.gdeltproject.org/data.html#rawdata"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "08:15"
+every_days = 1
+first_run = "2026-11-16"
+
+[metadata.agentic-forecasting.x]
+history_start = "2025-01-01"
+frequency = "daily, UTC days"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Each day's counts from GDELT's daily event file: URLs about AI, all distinct URLs, event rows, the file's size and Last-Modified time; or that GDELT posted no file"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "AI article history"
+columns = ["target"]
+what = """\
+  The target itself, every UTC day from 2025-01-01 through the day before the run date, \
+  whose file GDELT posts at 07:00 UTC on the run date. A day GDELT posted no file for \
+  (2025-06-14 to 07-01), or whose file could not be read, is left empty."""
+why = """\
+  History carries the level, the weekly cycle and how long a burst of coverage lasts: \
+  over the 601 days from 2025-01-29 the count a week earlier missed by 17% of the mean on \
+  average. AI's share of the articles GDELT codes grew from 0.9% in early 2025 to about \
+  2% in late 2026."""
+source = "GDELT 1.0 Event Database, daily event files"
+url = "https://data.gdeltproject.org/events/index.html"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "holiday"]
+what = """\
+  UTC weekday (Monday = 0), and 1 on US federal holidays as observed, else 0, including \
+  future dates."""
+why = """\
+  Fewer articles are published at weekends and on holidays: in the year to 2026-11-06 \
+  Saturdays and Sundays had 0.53 and 0.43 of the average day's count. Thanksgiving 2025 \
+  had 230 against 456 on the Thursdays a week before and after, and Christmas Day 91 \
+  against 339 on the Thursday before."""
+source = "computed, US federal holiday calendar"
