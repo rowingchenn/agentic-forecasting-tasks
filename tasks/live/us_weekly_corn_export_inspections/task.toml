@@ -1,0 +1,76 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-corn-export-inspections-live"
+keywords = ["forecasting", "live", "economy", "economic-activity", "trade", "corn"]
+
+[environment]
+cpus = 4
+memory_mb = 8192
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "15:50"
+AF_HORIZONS = "[7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_corn_export_inspections"
+title = "US weekly corn export inspections"
+question = "How many metric tons of US corn will USDA report as inspected and/or weighed for export in the Friday–Thursday week ending next Thursday?"
+taxonomy = "economy/economic-activity"
+driver = "economic"
+domain = "Economy and labor"
+region = "United States"
+unit = "metric tons/week"
+tradable = false
+summary = "A physical trade-activity measure: national corn inspected and/or weighed for export under the US Grain Standards Act. It is not export contracts, customs export dollar value, or a corn futures price."
+
+[metadata.agentic-forecasting.y]
+definition = "USDA FGIS Grain Inspections, AgTransport dataset sruw-w49i: select grain CORN and sum mt nationally across all port regions and destinations, grouped by the source date (Week Ending Date). Each Thursday labels the Friday–Thursday period ending that day. Use metric tons, not pounds, bushels or marketing-year cumulative totals. Preserve whole reporting weeks across calendar-year boundaries."
+settlement = "The first published weekly value captured by the pipeline from the official structured dataset, no earlier than the Monday after the target Thursday. The source normally updates weekly after the period ends; missing weeks remain unsettled. The pipeline preserves the first captured nonmissing value; subsequent revisions do not replace it. Downloaded historical data are the currently available vintage and do not reconstruct first releases. A changed schema or persistent source gap requires maintainer review."
+
+[metadata.agentic-forecasting.y.source]
+name = "USDA FGIS / AMS AgTransport, Grain Inspections"
+url = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "14:00"
+every_days = 7
+# Placeholder; maintainer sets a Thursday when enabling the timer.
+first_run = "2026-11-12"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-04"
+frequency = "weekly, Thursday labels; no daily interpolation"
+given_to = "TSFMs only; agents find their own information"
+raw = ["USDA weekly CORN metric-ton sums and source record counts", "Independent source completeness and unit/schema checks"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Weekly corn export-inspection history"
+columns = ["target"]
+what = "Whole Friday–Thursday national corn-inspection totals from January 2024 through the Thursday seven days before the run date. The run-date week is still unpublished, and both it and the following target week stay empty. Missing intervening published weeks stop the snapshot."
+why = "Recent trade volumes describe the level and short-term changes; previous years provide context for seasonal grain flows."
+source = "USDA FGIS / AgTransport, grain CORN, sum of MT by Week Ending Date"
+url = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of each Thursday reporting-week label, known through the target week."
+why = "Harvest cycles, shipping schedules and seasonal demand affect grain trade."
+source = "computed"
