@@ -5,13 +5,14 @@ sources are keyless.
 
 - Yahoo Finance's daily chart of ZC=F, the nearby corn contract, read the day after a
   session: its close then equals the CBOT settlement that USDA Market News republishes.
+  B also reads the dated chart of the next contract (ZCH27.CBT for March 2027).
 - USDA Market News's daily grain reports, for the run date's own settlement at the snapshot.
   On a trading day Yahoo's newest bar can still be open then, and its live quote follows the
   most active contract, which weeks before a last trading day is not the nearby one.
 
     snapshot(run_date, spec)  X_d: the settlement history through the run date, as published now
     truth(today, spec)        every completed day's settlement as published now
-    baseline(run_date, spec)  no change from the run date's settlement
+    baseline(run_date, spec)  no change from the run date's settlement of each date's contract
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from functools import cache
 from typing import ClassVar
 from http.client import HTTPException
 from urllib.error import HTTPError
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
@@ -47,7 +48,8 @@ from pandas.tseries.holiday import (
 
 ZONE = ZoneInfo("America/New_York")
 SYMBOL = "ZC=F"
-YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/ZC%3DF"
+CHART = "https://query1.finance.yahoo.com/v8/finance/chart/"
+YAHOO = CHART + "ZC%3DF"
 USER_AGENT = "agentic-forecasting/1.0"
 # Afternoon USDA reports whose "Futures Settlements" block lists the day's CBOT settlements,
 # nearest contract first. Of the 200 days from 2026-01-22 to 11-06 with an issue, one of the
@@ -59,6 +61,7 @@ USDA_REPORTS = (
     "https://www.ams.usda.gov/mnreports/ams_3878.pdf",  # North Dakota Daily Grain Bids
 )
 CONTRACT_MONTHS = {"Mar": 3, "May": 5, "Jul": 7, "Sep": 9, "Dec": 12}
+MONTH_CODES = {3: "H", 5: "K", 7: "N", 9: "U", 12: "Z"}
 MONTHS = ("January", "February", "March", "April", "May", "June", "July", "August",
           "September", "October", "November", "December")
 
@@ -136,8 +139,14 @@ def _nearby(day):
     raise AssertionError("unreachable")
 
 
+def _settling(day):
+    """(year, month) of the contract a date's value is a settlement of: the nearby contract
+    of its session, or on a weekend or holiday of the previous session."""
+    return _nearby(_sessions(day - timedelta(days=10), day)[-1].date())
+
+
 @cache
-def _prices(start_text, through_text):
+def _prices(start_text, through_text, symbol=SYMBOL):
     start, through = date.fromisoformat(start_text), date.fromisoformat(through_text)
     # Fetch a seed before history_start so a holiday/weekend can be forward-filled.
     begin = datetime.combine(start - timedelta(days=14), clock(), ZONE)
@@ -151,14 +160,14 @@ def _prices(start_text, through_text):
             "events": "div,splits",
         }
     )
-    payload = _get(YAHOO + "?" + query)
+    payload = _get(CHART + quote(symbol, safe=".") + "?" + query)
     chart = payload.get("chart", {}) if isinstance(payload, dict) else {}
     result = chart.get("result")
     if chart.get("error") or not result:
-        raise RuntimeError("Yahoo returned no usable ZC=F chart result.")
+        raise RuntimeError(f"Yahoo returned no usable {symbol} chart result.")
     chart = result[0]
-    if chart.get("meta", {}).get("symbol") != SYMBOL:
-        raise RuntimeError("Yahoo symbol does not match ZC=F.")
+    if chart.get("meta", {}).get("symbol") != symbol:
+        raise RuntimeError(f"Yahoo symbol does not match {symbol}.")
     stamps = chart.get("timestamp", [])
     quotes = chart.get("indicators", {}).get("quote", [])
     if not stamps or not quotes:
@@ -193,8 +202,8 @@ def _prices(start_text, through_text):
     return frame
 
 
-def _daily(start, through):
-    frame = _prices(start.isoformat(), through.isoformat())
+def _daily(start, through, symbol=SYMBOL):
+    frame = _prices(start.isoformat(), through.isoformat(), symbol)
     index = pd.date_range(start, through, name="timestamp")
     series = (
         frame["close"]
@@ -329,16 +338,20 @@ def truth(today, spec):
 
 def baseline(run_date, spec):
     """No change from the run date's settlement (published about 14:15 ET, before the
-    cutoff; on a Monday holiday, the previous session's), for every target date. Read from
-    Yahoo the day after the run date, once the day's bar holds the settlement."""
-    source = {"name": "No-change reference: the nearby corn settlement on the run date", "url": YAHOO}
+    cutoff; on a Monday holiday, the previous session's) of the contract each target date
+    settles on: the nearby one, or for dates after its last trading day the next contract.
+    Read from Yahoo the day after the run date, once the day's bars hold the settlements:
+    ZC=F for the nearby contract, the dated symbol (ZCH27.CBT) for the next."""
+    name = "No-change reference: the run date's corn settlement of each date's contract"
+    source = {"name": name, "url": YAHOO}
     if _now().date() <= run_date:
         return {"source": source, "forecasts": []}
-    point = float(_daily(run_date, run_date).iloc[0])
-    return {
-        "source": source,
-        "forecasts": [
-            {"target_date": (run_date + timedelta(days=h)).isoformat(), "point": point}
-            for h in spec["horizons"]
-        ],
-    }
+    nearby, forecasts = _settling(run_date), []
+    for h in spec["horizons"]:
+        day = run_date + timedelta(days=h)
+        year, month = _settling(day)
+        dated = f"ZC{MONTH_CODES[month]}{year % 100:02d}.CBT"
+        symbol = SYMBOL if (year, month) == nearby else dated
+        point = float(_daily(run_date, run_date, symbol).iloc[0])
+        forecasts.append({"target_date": day.isoformat(), "point": point})
+    return {"source": source, "forecasts": forecasts}

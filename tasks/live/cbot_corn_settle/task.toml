@@ -100,18 +100,19 @@ source = "computed"
 [metadata.agentic-forecasting.baseline]
 system = "corn-no-change"
 label = "No-change reference"
-name = "No change from the nearby corn settlement on the run date"
+name = "No change from the run date's settlement of the contract each date settles on"
 kind = "point"
 reference = true
 visible_to_agents = true
 method = """\
-  The run date's settlement of the nearby contract (on a Monday exchange holiday, the \
-  previous session's), for every target date: the no-change reference of a tradable \
-  price, not an expert forecast. In the few weeks a year whose target dates cross a \
-  contract's last trading day, the dates after it settle on the next contract while \
-  this reference stays on the old one. Agents can see this settlement, published about \
-  14:15 ET, before they start. It is read from Yahoo Finance the day after the run date."""
+  For each target date, the run date's settlement (on a Monday exchange holiday, the \
+  previous session's) of the contract that date settles on: the nearby contract, or, for \
+  the dates after its last trading day, the next contract. It is the no-change reference \
+  of a tradable price, not an expert forecast. Agents can see these settlements, \
+  published about 14:15 ET, before they start. They are read from Yahoo Finance the day \
+  after the run date: ZC=F for the nearby contract, the dated contract (ZCH27.CBT for \
+  March 2027) for the next."""
 
 [metadata.agentic-forecasting.baseline.source]
-name = "Yahoo Finance ZC=F daily chart"
+name = "Yahoo Finance daily charts of ZC=F and the dated corn contracts"
 url = "https://finance.yahoo.com/quote/ZC%3DF/history/"
