@@ -640,13 +640,15 @@ def snapshot(run_date: date, spec: dict) -> dict:
         index=index,
     )
     series["prsl"] = _expert(series["target"], _prsl_kept(), last, run_date)
+    prsl = _load(_prsl_file(), PRSL_COLUMNS, _check_prsl)
     return {
         "series": series,
         "last_observed": last,
         "raw": {
             "ota2201_daily.csv": report[REPORT_COLUMNS[:4]],
             "first_prints.csv": _load(_prints_file(), PRINT_COLUMNS, _check_prints),
-            "prsl_forecasts.csv": _load(_prsl_file(), PRSL_COLUMNS, _check_prsl),
+            # earlier run dates only: B's own issue never enters X_d
+            "prsl_forecasts.csv": prsl[prsl["run_date"] < run_date.isoformat()],
         },
         "sources": {
             "history": REPORT_PAGE,
