@@ -1,0 +1,162 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-natgas-storage-change-live"
+keywords = ["forecasting", "live", "energy"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "12:30"
+AF_HORIZONS = "[1, 8, 15, 22]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_natgas_storage_change"
+title = "US weekly natural gas storage change, Lower 48"
+question = """\
+  By how many billion cubic feet will working gas in underground storage in the Lower 48 \
+  states change in the week ending tomorrow and in each of the three weeks after, as EIA \
+  first reports it?"""
+taxonomy = "energy/fuel-inventories"
+driver = "weather"
+domain = "Fuel inventories"
+region = "Lower 48 states of the United States"
+unit = "Bcf/week"
+tradable = false
+summary = """\
+  The weekly net injection into, or withdrawal from, working gas in underground storage in \
+  the Lower 48 states, from EIA's Weekly Natural Gas Storage Report. Storage fills from \
+  April to October and empties from December to March; the size of each week's change \
+  follows the weather, above all heating demand in winter, and production, power burn and \
+  LNG exports. History starts in January 2010."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  For the storage week ending on the target Friday, the implied flow of working gas in the \
+  Lower 48 states in billion cubic feet, as EIA's Weekly Natural Gas Storage Report gives \
+  it: the net injection, positive, or net withdrawal, negative (`implied_flow` of "total \
+  lower 48 states" in EIA's wngsr.json). It equals the change in reported stocks \
+  (`net_change`) except in a week with a reclassification between working and base gas, \
+  which EIA flags."""
+settlement = """\
+  The value as first published by EIA, normally at 10:30 ET on the Thursday six days after \
+  the week ends (on another day in some holiday weeks, by EIA's schedule); later revisions \
+  are not used. EIA's weekly file holds only the newest week until the next release, and \
+  the pipeline reads it every day. A week it never read there settles on the change in \
+  EIA's weekly levels as published at the next reading, which in a reclassification week \
+  is the change in stocks, not the implied flow."""
+
+[metadata.agentic-forecasting.y.source]
+name = "U.S. Energy Information Administration, Weekly Natural Gas Storage Report"
+url = "https://ir.eia.gov/ngs/ngs.html"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "10:45"
+every_days = 7
+first_run = "2026-11-19"
+
+[metadata.agentic-forecasting.x]
+history_start = "2010-01-08"
+frequency = "weekly, storage weeks ending Fridays"
+given_to = "TSFMs only; agents find their own information"
+raw = [
+  "EIA's weekly Lower 48 working gas levels as published now",
+  "The economists' consensus of each week read so far, kept on the host",
+]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Storage change history"
+columns = ["target"]
+what = """\
+  The weekly change in Lower 48 working gas from the week ending 2010-01-08 to the newest \
+  week EIA has published at the start, normally the one released that morning. The \
+  newest week is EIA's first print; earlier weeks are differences of EIA's weekly levels as \
+  published now. From 2023-04 to 2026-11 these differ from the first print in 32 of 185 \
+  weeks, by 2 Bcf on average in those weeks (1 Bcf in half of them, 10 at most). A week \
+  EIA has not published is left empty."""
+why = """\
+  Recent weeks carry the level of demand and supply, and earlier years the seasonal \
+  pattern of injections and withdrawals."""
+source = "EIA: weekly levels and the Weekly Natural Gas Storage Report"
+url = "https://www.eia.gov/dnav/ng/hist/nw2_epg0_swo_r48_bcfw.htm"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = """\
+  ISO week number and month of the Friday that ends each storage week, including the \
+  target weeks."""
+why = """\
+  From 2010 to 2026 storage rose in 90% to 100% of weeks from April to October, by 45 to \
+  91 Bcf a week on average, and fell in 76% to 99% of weeks from December to March, by 45 \
+  to 169 Bcf; winter weeks vary most."""
+source = "computed"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier economists' consensus"
+columns = ["consensus"]
+expert = true
+what = """\
+  The economists' consensus as a run could see it. For past weeks, that week's own, in the \
+  last version read before its release; a past week without one read carries the week \
+  before's print. For the forecast window, the newest consensus read for a week before the \
+  first target week, normally the week published that morning, carried forward: the \
+  previous cycle's issue, since the consensus for the first target week appears after the \
+  cutoff. The numbers are read from Forex Factory's weekly calendar feed, which lists \
+  only the current week, and kept on the host from the first run on; until one has been \
+  read, X_d has no such column."""
+why = """\
+  Analysts see the week's weather, pipeline flows and LNG exports, which the history alone \
+  does not contain. Over the 185 weeks from 2023-04 to 2026-11 the consensus, in its last \
+  version before the release, had a mean absolute error of 7.12 Bcf, against 30.06 for the \
+  same week's mean over the five years before and 33.97 for the week before's print."""
+source = "Forex Factory's weekly calendar feed, Natural Gas Storage"
+url = "https://www.forexfactory.com/calendar"
+
+[metadata.agentic-forecasting.baseline]
+system = "gas-storage-consensus"
+label = "Economists' consensus"
+name = "Consensus of economists' forecasts of the week's first print"
+kind = "point"
+visible_to_agents = false
+method = """\
+  The consensus for the first target week, the week ending the day after the run date, as \
+  Forex Factory's weekly calendar feed lists it, in the first version the pipeline sees \
+  after the cutoff. The feed lists a week's releases from its Sunday. In archived copies of \
+  the feed from 2026-05 to 2026-10, the consensus was there by Tuesday evening in 8 of the \
+  10 weeks with a copy from then and by Wednesday evening in all 5 weeks with a copy from \
+  then; the first version seen equalled the last before the release in 12 of 13 weeks (83 \
+  against 80 in the other); it stayed in the feed after the release; and its last version \
+  equalled the consensus Investing.com recorded in all 13 weeks. The pipeline asks every \
+  morning from the day after the run date until there is one and keeps the first. So B is \
+  normally read three to six days after the cutoff, before the target week's release; when \
+  the consensus is posted only on the release day, B is read just after the release, and it \
+  is still the number posted before it, which the feed keeps. Releases are matched to \
+  storage weeks by their order after EIA's newest release, so a week with two releases \
+  (Christmas 2025) takes the right one, and a release the feed dates after EIA's actual day \
+  is left out by checking the previous print it lists. If the first target week comes out \
+  after the Saturday that follows the run date (the week ending 2025-12-19 came out on \
+  Monday 12-29), the feed lists it only after the pipeline has stopped asking, and that run \
+  has no B. Later target weeks have no consensus, so they have no B."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Forex Factory calendar, Natural Gas Storage"
+url = "https://www.forexfactory.com/calendar"
