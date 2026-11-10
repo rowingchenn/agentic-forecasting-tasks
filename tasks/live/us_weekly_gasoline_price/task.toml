@@ -1,0 +1,101 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-gasoline-price-live"
+keywords = ["forecasting", "live", "energy"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "13:50"
+AF_HORIZONS = "[4, 11]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_gasoline_price"
+title = "US weekly regular gasoline retail price"
+question = """\
+  What will the US Energy Information Administration first report as the average US \
+  retail price of regular gasoline on each of the next two Mondays?"""
+taxonomy = "energy/energy-prices"
+driver = "economic"
+domain = "Fuel prices"
+region = "United States"
+unit = "USD/gallon"
+tradable = false
+summary = """\
+  The average pump price of regular gasoline in the United States, taxes included, which \
+  the US Energy Information Administration (EIA) surveys every Monday morning and \
+  publishes on Tuesday. It follows wholesale gasoline and crude oil prices with a lag of \
+  days to weeks, so futures prices, daily averages from AAA or GasBuddy, refinery outages \
+  and news add information that history alone does not contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  EIA series EMM_EPMR_PTE_NUS_DPG, the weekly US regular gasoline retail price, all \
+  formulations, in dollars per gallon including taxes, to three decimal places: the \
+  average over EIA's sample of about 1,000 retail outlets, weighted by their sales \
+  volumes, of the self-serve cash price at 8:00 a.m. local time on the Monday that dates \
+  it."""
+settlement = """\
+  First published value, normally in EIA's release at about 10:00 a.m. Eastern on the \
+  Tuesday after the Monday, or on the Wednesday when the Monday is a federal holiday. The \
+  pipeline reads the series' history page on eia.gov every day at 12:00 Eastern and keeps \
+  the first value it sees, normally on the day of the release. EIA does not revise the \
+  series in practice: in 27 archived copies of the page from 2018-03 to 2026-08, every \
+  value matches today's."""
+
+[metadata.agentic-forecasting.y.source]
+name = "US Energy Information Administration, Gasoline and Diesel Fuel Update"
+url = "https://www.eia.gov/petroleum/gasdiesel/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:00"
+every_days = 7
+first_run = "2026-11-12"
+
+[metadata.agentic-forecasting.x]
+history_start = "2018-05-14"
+frequency = "weekly, Monday survey dates"
+given_to = "TSFMs only; agents find their own information"
+raw = ["The weekly prices as EIA's history page lists them at the snapshot"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Gasoline price history"
+columns = ["target"]
+what = """\
+  The target itself, every Monday from 2018-05-14, the first survey with EIA's current \
+  sample of outlets, through the latest Monday published before the start, normally three \
+  days before the run date. A week EIA has not published by the start is left empty."""
+why = """\
+  The price moves slowly from week to week, so the latest values carry most of the \
+  signal; the earlier years show the yearly pattern, rising in spring and falling in \
+  autumn."""
+source = "EIA, series EMM_EPMR_PTE_NUS_DPG"
+url = "https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s=EMM_EPMR_PTE_NUS_DPG&f=W"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of each Monday, including the target dates."
+why = """\
+  Refiners switch to the costlier summer blend in spring and back to the winter blend from \
+  mid-September, and people drive most in summer."""
+source = "computed"
