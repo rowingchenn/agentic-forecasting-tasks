@@ -6,8 +6,8 @@ name = "agentic-forecasting/boc-usd-cad-live"
 keywords = ["forecasting", "live", "markets"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/Toronto"
