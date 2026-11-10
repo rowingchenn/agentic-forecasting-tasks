@@ -80,7 +80,11 @@ columns = ["target"]
 what = """\
   The D1-D4 share of every weekly map from 4 January 2000 through the newest map out at \
   the snapshot, normally the one valid on the Tuesday two days before the run date; the \
-  two target Tuesdays, and any week the Drought Monitor did not publish, are left empty."""
+  two target Tuesdays, and any week the Drought Monitor did not publish, are left empty. \
+  The statistics carry a new map soon after the 08:30 release: from 13 August to 5 \
+  November 2026, the Sustainable FSA project's weekly checks 40 to 81 minutes after the \
+  release found it on all 12 Thursdays checked that early, and a check 21 minutes \
+  before the release on 5 November found none."""
 why = """\
   Drought builds and recedes over weeks to months, so the current level and its recent \
   direction carry much of the next maps; the earlier years carry the seasonal pattern."""
