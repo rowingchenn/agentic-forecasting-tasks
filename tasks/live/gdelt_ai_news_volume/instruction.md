@@ -41,9 +41,10 @@ the next day; GDELT has not changed its files after posting them. A date whose f
 missing, cannot be read, or has no line of 58 fields is not settled, never taken as zero:
 GDELT posted no files for 2025-06-14 to 2025-07-01. A date still without a file more than 14
 days later, once a later date's file has been read, is treated as having none, and a file
-posted after that is not used. The run
-date's own file comes out the morning after it and is not forecast; when the Task starts, the
-newest file is the one for the day before the run date.
+posted after that is not used.
+
+The run date itself is not forecast: ten hours of it have passed by the cutoff. When the Task
+starts, the newest file is normally the one for the day before the run date.
 
 ## Inputs and environment
 
