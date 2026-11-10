@@ -1,0 +1,105 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/conus-drought-area-live"
+keywords = ["forecasting", "live", "environment"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "13:45"
+AF_HORIZONS = "[5, 12]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "conus_drought_area"
+title = "Share of the contiguous United States in drought"
+question = """\
+  What percentage of the contiguous United States will the U.S. Drought Monitor show in \
+  drought (categories D1 to D4) on its maps for next Tuesday and the Tuesday after?"""
+taxonomy = "environment/natural-hazards"
+driver = "weather"
+domain = "Drought"
+region = "Contiguous United States (the 48 states and the District of Columbia)"
+unit = "% of area"
+tradable = false
+summary = """\
+  The U.S. Drought Monitor's weekly share of the contiguous United States in moderate (D1) \
+  or worse drought, the figure news reports quote as the area in drought. The map's \
+  authors weigh rain, temperature, soil moisture, streamflow and local reports each week, \
+  and the share moves by about a percentage point a week: it tends to spread in summer and \
+  to recede from autumn to spring. History starts with the first map, 4 January 2000."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  For the U.S. Drought Monitor map whose data are valid on the target Tuesday, the \
+  percentage of the area of the contiguous United States in drought categories D1 \
+  (moderate) to D4 (exceptional): the D1 column of the Drought Monitor's cumulative \
+  ("traditional") percent-of-area statistics for CONUS, in percent with two decimals, so \
+  43.98 means 43.98%. Abnormally dry (D0) area is not counted."""
+settlement = """\
+  The value as first published by the National Drought Mitigation Center with the map, \
+  normally at 08:30 ET on the Thursday two days after the target date (on the Wednesday \
+  in a week with a Thursday holiday); later changes are not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "U.S. Drought Monitor (National Drought Mitigation Center, USDA, NOAA and NASA)"
+url = "https://droughtmonitor.unl.edu/DmData/DataTables.aspx"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:00"
+every_days = 7
+first_run = "2026-11-19"
+
+[metadata.agentic-forecasting.x]
+history_start = "2000-01-04"
+frequency = "weekly, one row per map Tuesday"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Every map's cumulative CONUS percentages (None, D0-D4, D1-D4, D2-D4, D3-D4, D4) and valid dates"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Drought area history"
+columns = ["target"]
+what = """\
+  The D1-D4 share of every weekly map from 4 January 2000 through the newest map out at \
+  the snapshot, normally the one valid on the Tuesday two days before the run date; the \
+  two target Tuesdays, and any week the Drought Monitor did not publish, are left empty. \
+  The statistics carry a new map soon after the 08:30 release: from 13 August to 5 \
+  November 2026, the Sustainable FSA project's weekly checks 40 to 81 minutes after the \
+  release found it on all 12 Thursdays checked that early, and a check 21 minutes \
+  before the release on 5 November found none."""
+why = """\
+  Drought builds and recedes over weeks to months, so the current level and its recent \
+  direction carry much of the next maps; the earlier years carry the seasonal pattern."""
+source = """\
+  U.S. Drought Monitor statistics. The U.S. Drought Monitor is jointly produced by the \
+  National Drought Mitigation Center at the University of Nebraska-Lincoln, the U.S. \
+  Department of Agriculture, the National Oceanic and Atmospheric Administration and \
+  NASA. Data courtesy of NDMC, via https://droughtmonitor.unl.edu."""
+url = "https://droughtmonitor.unl.edu/DmData/DataDownload/WebServiceInfo.aspx"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of each map's Tuesday, including the target weeks."
+why = """\
+  From 2000 to 2026 the D1-D4 share rose by 0.2 to 0.7 points a week on average from June \
+  to September, and fell on average in six of the other eight months."""
+source = "computed"
