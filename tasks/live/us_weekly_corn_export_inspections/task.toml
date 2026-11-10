@@ -1,0 +1,103 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-corn-export-inspections-live"
+keywords = ["forecasting", "live", "economy"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "15:50"
+AF_HORIZONS = "[7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_corn_export_inspections"
+title = "US weekly corn export inspections"
+question = """\
+  How many metric tons of corn will USDA first report as inspected for export from the \
+  United States in the Friday-to-Thursday week that starts the day after the run?"""
+taxonomy = "economy/economic-activity"
+driver = "economic"
+domain = "Grain exports"
+region = "United States"
+unit = "metric tons/week"
+tradable = false
+summary = """\
+  The corn that USDA's Federal Grain Inspection Service inspects or weighs for export in \
+  one week, summed over all US port areas and destinations, as USDA first reports it on \
+  the Monday after the week. It follows the export sales made earlier, the ships loading \
+  at the Gulf and Pacific Northwest ports, and river and rail conditions; USDA's weekly \
+  export sales report and shipping news add information that history alone does not \
+  contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Corn inspected and/or weighed for export under the US Grain Standards Act in the week \
+  from Friday through the Thursday of the target date, in metric tons, over all port areas \
+  and destinations: the CORN figure for the week in USDA's report WA_GR101, Grains \
+  Inspected and/or Weighed for Export, which equals the sum of mt over the rows with grain \
+  CORN and date (Week Ending Date) equal to the target date in the AgTransport dataset."""
+settlement = """\
+  First published value, in USDA's report on the Monday after the week, or on the Tuesday \
+  when Monday is a federal holiday. USDA adds the week to the AgTransport dataset the same \
+  day (at 11:46 ET on 2026-11-09), where the pipeline reads it. The next Monday's report \
+  revises the figure, upward in all 40 weeks checked from 2024-02 to 2026-10, by 2.0% at \
+  the median and up to 19%; that revision and the smaller later ones are not used."""
+
+[metadata.agentic-forecasting.y.source]
+name = "USDA AMS AgTransport, Grain Inspections (FGIS)"
+url = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "14:00"
+every_days = 7
+first_run = "2026-11-12"
+
+[metadata.agentic-forecasting.x]
+history_start = "2000-01-06"
+frequency = "weekly, weeks ending Thursday; no daily interpolation"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Corn inspected for export by week and port area, with the number of USDA records summed"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Corn export inspections"
+columns = ["target"]
+what = """\
+  The target, every week from the one ending 2000-01-06 through the latest week USDA has \
+  published before the start, normally the week ending seven days before the run date; the \
+  week ending on the run date and the target week are left empty. The newest week is its \
+  first print; earlier weeks are as USDA has revised them since, a median 2.0% above \
+  their first print in the 40 weeks checked. The dataset has every week since 1983."""
+why = """\
+  Recent weeks show the current pace of shipments; the long history carries the seasonal \
+  cycle and how much it varies from year to year."""
+source = "USDA AMS AgTransport, Grain Inspections, grain CORN"
+url = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of the Thursday that ends each week, including the target week."
+why = """\
+  US corn ships most from March to May and least from September to November, when \
+  Brazil's second crop is shipped: from 2015 to 2025 the average week shipped 1.43 \
+  million t in April and 0.68 million t in October."""
+source = "computed"
