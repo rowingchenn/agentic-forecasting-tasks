@@ -6,8 +6,8 @@ name = "agentic-forecasting/swpp-daily-wind-live"
 keywords = ["forecasting", "live", "energy", "wind"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/Chicago"
@@ -30,70 +30,84 @@ network_justification = """\
 
 [metadata.agentic-forecasting]
 target = "swpp_daily_wind"
-title = "Southwest Power Pool daily non-battery wind generation"
+title = "Southwest Power Pool daily wind generation"
 question = """\
-  How much net electricity will SWPP report from wind without integrated battery \
-  storage on each of the next seven Central-time days?"""
+  How much electricity will wind farms on the Southwest Power Pool grid generate on each \
+  of the next seven days, as SPP reports it to EIA?"""
 taxonomy = "energy/renewable-generation"
-driver = "physical"
-domain = "Energy"
-region = "Southwest Power Pool balancing authority, United States"
-unit = "MWh/day"
+driver = "weather"
+domain = "Renewable generation"
+region = "Southwest Power Pool balancing authority (central United States)"
+unit = "MWh"
 tradable = false
 summary = """\
-  Daily net generation reported by Southwest Power Pool under EIA-930 fuel code WND, \
-  wind without integrated battery storage. Wind conditions, installed capacity and \
-  curtailment affect output. This is the reported balancing-authority series, not \
-  all wind production in the states it serves."""
+  The daily net electricity generation from wind on the grid that Southwest Power Pool \
+  (SPP) operates across the Great Plains, from North Dakota to the Texas Panhandle, as SPP \
+  reports it hourly to the US Energy Information Administration. Wind speed drives it; \
+  SPP's curtailment of wind when the grid cannot take it, outages and new wind farms change \
+  it too."""
 
 [metadata.agentic-forecasting.y]
 definition = """\
-  For Balancing Authority SWPP and each Data Date in America/Chicago, sum the raw \
-  hourly Net Generation (MW) from Wind without Integrated Battery Storage column \
-  in EIA-930's six-month BALANCE CSVs. Each one-hour value contributes the same \
-  numerical quantity of MWh. Require exactly the UTC hour endings for the full \
-  local day, 23, 24 or 25 hours, and a finite WND value at every hour. Zero is a \
-  valid value; missing values do not contribute zero. Do not add WNB, other fuel \
-  categories, or imputed/adjusted columns. Historical files before July 2024 use \
-  an unsplit Wind label and are excluded."""
+  For each day from midnight to midnight America/Chicago, the sum of SWPP's 23, 24 or 25 \
+  hourly values in the column "Net Generation (MW) from Wind without Integrated Battery \
+  Storage" (EIA-930 fuel code WND) of EIA's six-month BALANCE file; each value is the \
+  hour's energy in MWh. The hour ending at midnight belongs to the day that ends. A day \
+  counts only when every hour has a value. Wind with integrated battery storage (WNB, which \
+  SWPP leaves blank), the imputed and adjusted columns and other fuels are not included."""
 settlement = """\
-  Settle on the first complete daily value recorded from EIA after the local day \
-  ends; later revisions do not replace it. A day with any missing WND observation \
-  remains unsettled until complete; never interpolate, carry forward or publish a \
-  partial sum. Historical bootstrap data are the vintage downloaded, not a \
-  reconstruction of original releases. EIA says yesterday's fuel-generation data \
-  are typically available by 11:00 Eastern; this is not a guaranteed deadline."""
+  First published value: the first complete total the pipeline reads in EIA's six-month \
+  file, which EIA rewrites once a day, at about 09:30 to 10:05 Central, adding the previous \
+  day; later revisions do not replace it. A day with a missing hour is settled once EIA \
+  fills it."""
 
 [metadata.agentic-forecasting.y.source]
-name = "U.S. Energy Information Administration, EIA-930 Hourly Electric Grid Monitor"
+name = "U.S. Energy Information Administration, Form EIA-930, six-month BALANCE files"
 url = "https://www.eia.gov/electricity/gridmonitor/"
 
 [metadata.agentic-forecasting.schedule]
 snapshot = "12:00"
 every_days = 1
-# The maintainer sets first_run when enabling the timer.
-first_run = "2026-11-09"
+first_run = "2026-11-12"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-07-01"
-frequency = "daily, America/Chicago reporting days"
+frequency = "daily, Central-time days, with the hourly values they are derived from"
 given_to = "TSFMs only; agents find their own information"
-raw = ["Raw SWPP hourly WND and WNB fields, UTC hour endings, and daily completeness audit"]
+raw = ["SWPP's hourly WND values (EIA-930 six-month BALANCE files)", "Hourly 100 m wind speed forecast at eight sites (ECMWF IFS via Open-Meteo)"]
 
 [[metadata.agentic-forecasting.x.groups]]
-name = "Reported wind generation history"
+name = "Wind generation history"
 columns = ["target"]
 what = """\
-  Complete-day WND totals from July 2024 through the latest published completed \
-  reporting day before the run. Incomplete dates stay empty, and publication delay \
-  can leave a gap at the end. Every fetch rereads the revisable public history."""
-why = "Recent output and seasonal history describe wind-generation levels and variability."
-source = "U.S. Energy Information Administration, EIA-930, SWPP, fuel code WND"
+  The target itself, every complete day from July 2024, when EIA's files first separate \
+  wind with and without batteries, up to the day before the run date: EIA adds a day the \
+  next morning, before the 12:00 start. A day with a missing hour is left empty (2024-07-10 \
+  and 2026-01-20)."""
+why = """\
+  Recent days carry the level that installed capacity and SPP's curtailment set; output \
+  peaks in spring and is lowest from July to September."""
+source = "EIA-930, SWPP, fuel code WND"
 url = "https://www.eia.gov/electricity/gridmonitor/"
 
 [[metadata.agentic-forecasting.x.groups]]
+name = "Wind at hub height across SPP's wind belt"
+columns = ["wind100_<site>"]
+what = """\
+  Daily mean wind speed 100 m above ground at eight places among SPP's wind farms \
+  (Woodward and Weatherford in Oklahoma, Dodge City and Salina in Kansas, Amarillo, Clovis, \
+  North Platte and Bismarck): Open-Meteo's historical weather for past days, the ECMWF \
+  forecast issued before the run for the forecast window."""
+why = """\
+  Turbines convert the wind at about this height into power, so the wind forecast is the \
+  strongest single predictor: over the history the eight-site mean correlates 0.84 with the \
+  target, the previous day's value 0.55."""
+source = "Open-Meteo (historical weather, ECMWF IFS 0.25° forecast)"
+url = "https://open-meteo.com/en/docs/ecmwf-api"
+
+[[metadata.agentic-forecasting.x.groups]]
 name = "Calendar"
-columns = ["dow", "month", "day_of_year"]
-what = "Central-time weekday (Monday=0), month (1-12), and day of year (1-366), including future dates."
-why = "Calendar variables describe seasonal wind patterns and operating schedules."
+columns = ["month", "day_of_year"]
+what = "Calendar month and day of the year."
+why = "Wind over the Great Plains follows the seasons."
 source = "computed"
