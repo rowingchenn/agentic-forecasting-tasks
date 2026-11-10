@@ -6,8 +6,8 @@ name = "agentic-forecasting/mta-bt-daily-crossings-live"
 keywords = ["forecasting", "live", "mobility"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/New_York"

@@ -1,0 +1,25 @@
+# Offline replay of the mta_bt_daily_crossings run day 2026-11-09, generated from tasks/live/mta_bt_daily_crossings
+# by the agentic-forecasting pipeline (af/mock.py). Edit the live Task instead.
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/mta-bt-daily-crossings-mock-2026-11-09"
+keywords = ["forecasting", "mock", "mobility"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "no-network"
+
+[verifier]
+timeout_sec = 120
+
+[metadata.agentic-forecasting]
+target = "mta_bt_daily_crossings"
+mode = "mock"
+run_date = "2026-11-09"
