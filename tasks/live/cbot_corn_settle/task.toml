@@ -1,0 +1,118 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/cbot-corn-settle-live"
+keywords = ["forecasting", "live", "markets", "commodities"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "18:35"
+AF_HORIZONS = "[1, 2, 3, 4, 7]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "cbot_corn_settle"
+title = "CBOT corn futures settlement"
+question = """\
+  Where will the nearby CBOT corn futures contract settle on Tuesday through Friday and \
+  the following Monday?"""
+taxonomy = "markets/commodities"
+driver = "market"
+domain = "Commodity prices"
+region = "United States (CBOT, CME Group)"
+unit = "US cents per bushel"
+tradable = true
+summary = """\
+  The daily settlement price of the nearby CBOT corn futures contract, in US cents per \
+  bushel, forecast on Monday evenings for Tuesday through Friday and the following \
+  Monday. Corn futures are a liquid, tradable price that already reflects public \
+  information such as USDA crop reports and weather, so this target is a control: \
+  forecasts are compared with no change from Monday's settlement."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  The CBOT settlement price, in US cents per bushel, of the nearby corn futures contract \
+  (ZC): of the listed months March, May, July, September and December, the one nearest \
+  to expiry whose last trading day (the business day before the 15th calendar day of \
+  the contract month) is on or after the date. On the session after a contract's last \
+  trading day the series moves to the next contract, a step that is the price gap \
+  between the two contracts, not a price change. On weekends and exchange holidays, \
+  when there is no session, the value is the previous session's settlement."""
+settlement = """\
+  A forecast is settled on the first settlement price published for that date; on \
+  weekends and exchange holidays, the previous session's settlement. It is read from \
+  Yahoo Finance's daily history of ZC=F (Close), which equals the CBOT settlement that \
+  USDA Market News republishes in its daily grain reports on the dates compared."""
+
+[metadata.agentic-forecasting.y.source]
+name = "Yahoo Finance ZC=F daily chart"
+url = "https://finance.yahoo.com/quote/ZC%3DF/history/"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "16:45"
+every_days = 7
+first_run = "2026-11-16"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-01"
+frequency = "daily: session settlements, with the previous settlement on weekends and exchange holidays"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Yahoo Finance daily bars of ZC=F before the run date: open, high, low, settlement (close) and volume", "The run date's settlement, contract and USDA report it was read from"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Settlement history"
+columns = ["target"]
+what = """\
+  The target itself, every day through the run date; weekends and exchange holidays \
+  carry the previous settlement, and the series steps when the nearby contract changes. \
+  The run date's own settlement, published about 14:15 ET, is read from USDA Market \
+  News's afternoon grain report, and stays empty if neither report lists it by the \
+  start."""
+why = "Recent prices give the current level and recent movement."
+source = "Yahoo Finance ZC=F daily chart; USDA Market News daily grain bids (reports 3049, 3878)"
+url = "https://finance.yahoo.com/quote/ZC%3DF/history/"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["dow", "month"]
+what = "Day of week (Monday = 0) and calendar month, including target dates."
+why = "Weekly and seasonal timing, known for every date."
+source = "computed"
+
+[metadata.agentic-forecasting.baseline]
+system = "corn-no-change"
+label = "No-change reference"
+name = "No change from the run date's settlement of the contract each date settles on"
+kind = "point"
+reference = true
+visible_to_agents = true
+method = """\
+  For each target date, the run date's settlement (on a Monday exchange holiday, the \
+  previous session's) of the contract that date settles on: the nearby contract, or, for \
+  the dates after its last trading day, the next contract. It is the no-change reference \
+  of a tradable price, not an expert forecast. Agents can see these settlements, \
+  published about 14:15 ET, before they start. They are read from Yahoo Finance the day \
+  after the run date: ZC=F for the nearby contract, the dated contract (ZCH27.CBT for \
+  March 2027) for the next."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "Yahoo Finance daily charts of ZC=F and the dated corn contracts"
+url = "https://finance.yahoo.com/quote/ZC%3DF/history/"
