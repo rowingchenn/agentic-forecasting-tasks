@@ -6,8 +6,8 @@ name = "agentic-forecasting/cbot-corn-settle-live"
 keywords = ["forecasting", "live", "markets", "commodities"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/New_York"
