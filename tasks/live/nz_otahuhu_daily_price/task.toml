@@ -6,8 +6,8 @@ name = "agentic-forecasting/nz-otahuhu-daily-price-live"
 keywords = ["forecasting", "live", "energy"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "Pacific/Auckland"
@@ -45,12 +45,8 @@ summary = """\
   The daily average of the half-hourly wholesale electricity price at Otahuhu (OTA2201), \
   the grid node for Auckland, in New Zealand's nodal market. Prices follow hydro storage \
   and inflows, wind, gas supply, demand and plant outages: the daily average reached \
-  NZ$878/MWh in August 2024 and fell to about NZ$0.01 in January 2026. The pricing \
-  manager publishes forecast prices from the market's price-responsive schedules through \
-  the day, and the next day's forecast is the comparison. Prices: Electricity Authority, \
-  EMI (www.emi.ea.govt.nz), whose own works the Authority licenses under CC BY 4.0, with \
-  exclusions; the forecast prices are prepared by the pricing manager and published by the \
-  Authority on EMI. History starts in January 2023."""
+  NZ$878/MWh in August 2024 and fell to about NZ$0.01 in January 2026. It is compared \
+  with the pricing manager's forecast from the price-responsive schedule (PRSL)."""
 
 [metadata.agentic-forecasting.y]
 definition = """\
@@ -61,13 +57,12 @@ definition = """\
   OTA2201)."""
 settlement = """\
   The interim prices EMI first publishes for the day, in \
-  `YYYYMMDD_FinalEnergyPrices_I.csv`, posted in EMI's batch at about 07:05 NZ the next \
-  morning; a file counts only with a price for every trading period of the day. The final \
-  prices, declared later and unchanged unless a pricing error claim is made, replace the \
-  file in a later batch: the next morning's for a Monday-to-Thursday trading day, so the \
-  file is up for about 24 hours, and later at weekends and holidays. The pipeline reads \
-  the file at its 10:10 call. A day whose interim file it missed settles on the final \
-  prices, from EMI's single-node report, once EMI shows them, or, after a week, on that \
+  `YYYYMMDD_FinalEnergyPrices_I.csv`, posted at about 07:05 NZ the next morning and read \
+  at 10:10; the file counts only with a price for every trading period of the day. EMI \
+  replaces it with the final prices once they are declared, unchanged unless a pricing \
+  error claim is made: the next morning for a Monday-to-Thursday trading day, later at \
+  weekends and holidays. A day whose interim file was not read settles on the final \
+  prices, from EMI's single-node report, or, if neither is there within a week, on that \
   report as published then."""
 
 [metadata.agentic-forecasting.y.source]
@@ -123,14 +118,10 @@ expert = true
 what = """\
   The pricing manager's PRSL forecast of each day's mean price at OTA2201, issued the day \
   before by B's rule: the first run stamped from 12:00 that covers every trading period of \
-  the day. A past day without one carries the previous day's price. The run date's row \
-  holds the forecast for the run date issued the day before, the previous cycle's issue, \
-  and carries it to the target date; B's own issue, from 12:10 on the run date, is never \
-  included. Runs are read from EMI's daily zips and kept on the host, a year back at most. \
-  On the first run day the snapshot reads the day before's run and up to nine older ones; \
-  afterwards the pipeline's baseline call reads the newest run each morning and the \
-  snapshot up to ten older ones, until the year is complete, unless a one-time warm-up has \
-  filled it."""
+  the day. The run date's row holds the forecast for the run date issued the day before, \
+  the previous cycle's issue, and carries it to the target date; B's own issue, from 12:10 \
+  on the run date, is never included. Forecasts start in November 2025; earlier days, and \
+  a day without one, carry the previous day's price."""
 why = """\
   The schedule sees generators' offers, hydro and thermal plant availability, the demand \
   forecast and transmission limits, which the price history does not contain. For the 402 \
@@ -156,8 +147,8 @@ method = """\
   from 2025-10-01, that run was stamped 12:10 on 397 and 12:19 to 12:44 on the other five, \
   never earlier. Before the 50-half-hour day in April it ends two half-hours short, and the \
   14:10 run is B. The agents cannot see B, issued after the cutoff. EMI posts each day's \
-  runs at 16:10 UTC, 05:10 NZDT or 04:10 NZST the next morning, and the pipeline reads B \
-  at its 10:10 call that morning."""
+  runs at 16:10 UTC (05:10 NZDT or 04:10 NZST the next morning), and B is recorded the \
+  next day."""
 
 [metadata.agentic-forecasting.baseline.source]
 name = """\
