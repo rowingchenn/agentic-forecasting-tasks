@@ -133,15 +133,16 @@ what = """\
   last version before its release; a past week without one carries the week before's \
   print. For the forecast window, the consensus for the newest published week, carried \
   forward: the previous cycle's issue, since the consensus for the first target week \
-  appears after the cutoff. The numbers are kept on the host, so a morning without an \
-  answer from the source uses the last ones read; if none was ever read, X_d has no such \
-  column."""
+  appears after the cutoff. Each week is read once after its release and kept on the \
+  host, so a morning without an answer from the source uses the weeks read before; if \
+  none was ever read, X_d has no such column."""
 why = """\
   Economists see state reports, layoff news and the seasonal patterns of each week, which \
-  the history alone does not contain. Over the 179 weeks from 2023-04 to 2026-10 its last \
-  version had a mean absolute error of 8,369, against 9,296 for the week before's print."""
-source = "Investing.com's chart data for US initial jobless claims"
-url = "https://www.investing.com/economic-calendar/initial-jobless-claims-294"
+  the history alone does not contain. Over the 179 weeks from 2023-04 to 2026-10 with \
+  both, its last version had a mean absolute error of 8,257, against 9,156 for the week \
+  before's print."""
+source = "Nasdaq economic calendar, Initial Jobless Claims"
+url = "https://www.nasdaq.com/market-activity/economic-calendar"
 
 [metadata.agentic-forecasting.baseline]
 system = "economists-consensus"
@@ -164,9 +165,7 @@ method = """\
   Sunday; it had the number by Monday evening on all 26 archived, and from that first \
   capture to the last version the number moved by 920 on average, and not at all on 14 of \
   25. So B normally comes one to four days after the cutoff, when no new claims figure has \
-  been published. Nasdaq, Investing.com and Forex Factory give the same numbers, and where \
-  Nasdaq does not answer B comes from Investing.com, in the last version before the \
-  release."""
+  been published. Nasdaq, Investing.com and Forex Factory give the same numbers."""
 
 [metadata.agentic-forecasting.baseline.source]
 name = "Nasdaq economic calendar, Initial Jobless Claims"

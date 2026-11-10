@@ -12,8 +12,9 @@ with the AF_* schedule merged in, and turns the results into archived files.
                               seen after the cutoff
 
 The series is weekly: one row per claims week (Sunday to Saturday), dated on its Saturday.
-No credentials are needed. A release is read once and kept on the host, since it never
-changes; a cold start reads about 190 releases of 0.5 MB each, a few minutes.
+No credentials are needed. A release and a week's consensus are read once and kept on the
+host, since neither changes; a cold start reads about 190 releases of 0.5 MB each, a few
+minutes, and Nasdaq's calendar for as many weeks, one request each, about 15 minutes.
 """
 
 from __future__ import annotations
@@ -46,8 +47,6 @@ FRED = "https://fred.stlouisfed.org/graph/fredgraph.csv?id=ICSA"
 NASDAQ = "https://api.nasdaq.com/api/calendar/economicevents?date={day}"
 NASDAQ_PAGE = "https://www.nasdaq.com/market-activity/economic-calendar"
 NASDAQ_EVENT = "Initial Jobless Claims"
-INVESTING = "https://sbcharts.investing.com/events_charts/us/294.json"  # past weeks only
-INVESTING_PAGE = "https://www.investing.com/economic-calendar/initial-jobless-claims-294"
 SOURCE_RELEASE = "DOL news release"
 SOURCE_FRED = "FRED ICSA"
 GAP_DAYS = 21  # a week with no release this long after it ends is not asked about again
@@ -69,7 +68,7 @@ FAILURES = (
     ElementTree.ParseError,
 )
 TIMEOUT = 30  # seconds; agents have 15 minutes to spare, and a morning makes about 8 requests
-REQUEST_PAUSE = 0.5  # seconds between requests
+REQUEST_PAUSE = 1.0  # seconds between requests
 RATE_LIMIT_PAUSE = 10  # seconds to wait after a 429
 
 STREAM = re.compile(rb">>\s*stream\r?\n")
@@ -439,43 +438,34 @@ def nasdaq_url(day: date) -> str:
 
 def nasdaq_row(week: date) -> tuple[dict | None, dict]:
     """The Nasdaq calendar's row for the release of a week, and the request's metadata. The API
-    files an event under the day after it (all 180 releases from 2023-04 to 2026-10), so a
+    files an event under the day after it (all 181 releases from 2023-04 to 2026-10), so a
     Thursday release is under Friday's date and a Wednesday one under Thursday's; the release
-    day itself is tried last, in case Nasdaq corrects that."""
+    day itself is tried last, in case Nasdaq corrects that. The release that ended the 2025
+    lapse in appropriations lists the weeks it caught up on as well, oldest first, so the last
+    row is the week's own."""
     meta: dict = {}
     for day in (week + timedelta(days=6), week + timedelta(days=5), week + timedelta(days=4)):
         body, meta = _get(nasdaq_url(day))
-        for row in (json.loads(body).get("data") or {}).get("rows") or []:
-            if row.get("eventName") == NASDAQ_EVENT and row.get("country") == "United States":
-                return row, meta
+        rows = [
+            row
+            for row in (json.loads(body).get("data") or {}).get("rows") or []
+            if row.get("eventName") == NASDAQ_EVENT and row.get("country") == "United States"
+        ]
+        if rows:
+            return rows[-1], meta
     return None, meta
 
 
-def investing_consensus() -> tuple[pd.Series, dict]:
-    """The consensus of past releases by week, from Investing.com's chart data, the same numbers
-    as Nasdaq's (180 of 180 weeks from 2023-04). A row is dated by its release, which comes
-    after the Saturday that ends its week, and holds the last version before the release. When
-    rows share a week, as the catch-up rows after the 2025 lapse do, the first is the one Nasdaq
-    lists for it."""
-    body, meta = _get(INVESTING)
-    values: dict[pd.Timestamp, float] = {}
-    for row in json.loads(body)["attr"]:
-        if row.get("forecast") is None:
-            continue
-        released = datetime.fromtimestamp(row["timestamp"] / 1000, EASTERN).date()
-        week = released - timedelta(days=(released.weekday() - 5) % 7 or 7)
-        values.setdefault(pd.Timestamp(week), float(row["forecast"]) * 1000)
-    feed = pd.Series(values, dtype=float, name="consensus").dropna().sort_index()
-    if feed.empty:
-        raise ValueError("Investing.com's chart data has no forecasts")
-    return feed, meta
-
-
-def consensus_feed() -> tuple[pd.Series, dict]:
-    """The consensus of past weeks, kept on the host and brought up to date when Investing.com
-    answers. A column missing on one run morning would leave the -expert TSFMs with no forecast,
-    and the website compares only the run days that every TSFM and agent has, so that day would
-    leave every row of its leaderboard. Empty if nothing was ever read."""
+def consensus_feed(start: date, last_observed: date, now: datetime) -> tuple[pd.Series, dict]:
+    """The consensus of each week from `start` to `last_observed`, by week, from Nasdaq's
+    calendar, which keeps the last version before the release. A released week's number never
+    changes, so each week is read once and kept on the host; a week whose row has none, as in
+    the 2025 lapse in appropriations, is kept empty once it is GAP_DAYS old. A request that
+    fails leaves its week for the next call, and MAX_FAILURES of them in a row end today's
+    reading, so a morning without an answer uses the weeks read before: a column missing on one
+    run morning would leave the -expert TSFMs with no forecast, and the website compares only
+    the run days that every TSFM and agent has, so that day would leave every row of its
+    leaderboard. Empty if nothing was ever read."""
     path = CACHE / f"consensus.{CACHE_VERSION}.csv"
     stored = pd.Series(dtype=float, index=pd.DatetimeIndex([]), name="consensus")
     if path.is_file():
@@ -483,22 +473,44 @@ def consensus_feed() -> tuple[pd.Series, dict]:
             frame = pd.read_csv(path)
             weeks = pd.DatetimeIndex(pd.to_datetime(frame["week"]))
             kept = pd.Series(frame["consensus"].astype(float).to_numpy(), index=weeks)
-            stored = kept[~weeks.duplicated()].dropna().sort_index().rename("consensus")
+            stored = kept[~weeks.duplicated()].sort_index().rename("consensus")
         except (OSError, ValueError, KeyError, TypeError) as exc:
-            _warn(f"{path} is damaged and not used: {exc!r}")
-    try:
-        read, meta = investing_consensus()
-    except FAILURES as exc:
-        _warn(f"Investing.com not read, using the consensus kept on the host: {exc!r}")
-        return stored, {"url": INVESTING, "note": "not read today; kept from an earlier day"}
-    feed = read.combine_first(stored).rename("consensus")
-    try:
-        CACHE.mkdir(parents=True, exist_ok=True)
-        feed.rename_axis("week").reset_index().to_csv(path.with_suffix(".tmp"), index=False)
-        path.with_suffix(".tmp").replace(path)
-    except OSError as exc:
-        _warn(f"the consensus not kept on the host: {exc!r}")
-    return feed, meta
+            _warn(f"{path} is damaged, reading Nasdaq's calendar again: {exc!r}")
+    today = now.astimezone(EASTERN).date()
+    fresh: dict[pd.Timestamp, float] = {}
+    asked = failures = 0
+    for week in pd.date_range(start, last_observed, freq="W-SAT"):
+        if week in stored.index:
+            continue
+        asked += 1
+        try:
+            row, _ = nasdaq_row(week.date())
+        except FAILURES as exc:
+            _warn(f"Nasdaq's calendar not read for the week ending {week.date()}: {exc!r}")
+            failures += 1
+            if failures == MAX_FAILURES:
+                break
+            continue
+        failures = 0
+        value = claims_number((row or {}).get("consensus"))
+        if value is not None or (today - week.date()).days > GAP_DAYS:
+            fresh[week] = float("nan") if value is None else value
+    if fresh:
+        stored = pd.concat([stored, pd.Series(fresh, dtype=float)]).sort_index()
+        try:
+            CACHE.mkdir(parents=True, exist_ok=True)
+            table = stored.rename("consensus").rename_axis("week").reset_index()
+            table.to_csv(path.with_suffix(".tmp"), index=False)
+            path.with_suffix(".tmp").replace(path)
+        except OSError as exc:
+            _warn(f"the consensus not kept on the host: {exc!r}")
+    feed = stored.dropna().rename("consensus")
+    return feed, {
+        "calendar": NASDAQ,
+        "weeks_with_a_consensus": int(feed.size),
+        "weeks_asked_today": asked,
+        "retrieved_at": now.isoformat(timespec="seconds"),
+    }
 
 
 def consensus_as_seen(
@@ -575,7 +587,7 @@ def snapshot(run_date: date, spec: dict) -> dict:
         )
         raw["dol_national_weekly.csv"] = table
 
-    feed, sources["consensus"] = consensus_feed()
+    feed, sources["consensus"] = consensus_feed(start.date(), last_observed.date(), _now())
     seen = consensus_as_seen(index, target, feed, last_observed)
     if seen is not None:
         columns.append(seen)
@@ -613,12 +625,11 @@ def truth(today: date, spec: dict) -> pd.Series:
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    """The economists' consensus for the first target week, as first seen after the cutoff. It
-    normally appears between the Friday after the run and the Monday before the release, and
-    the pipeline asks every day until there is one, keeping the first answer. Nasdaq's calendar
-    gives it before the release. Where Nasdaq does not answer, Investing.com gives the same
-    numbers, but only the last version and only after the release, which is still within the
-    week the pipeline asks for. Later target weeks have no consensus."""
+    """The economists' consensus for the first target week, as first seen after the cutoff, from
+    Nasdaq's calendar. It normally appears between the Friday after the run and the Monday
+    before the release, and the pipeline asks every day of the week after the run until there
+    is one, keeping the first answer, so a morning without an answer from Nasdaq only delays
+    it. Later target weeks have no consensus."""
     schedule = spec["schedule"]
     week = run_date + timedelta(days=spec["horizons"][0])
     source: dict = {
@@ -640,23 +651,6 @@ def baseline(run_date: date, spec: dict) -> dict:
             point = claims_number(row.get("consensus"))
             source["posted"] = meta.get("retrieved_at")
             source["calendar_row"] = {k: v for k, v in row.items() if k != "description"}
-    if point is None:
-        try:
-            feed, meta = investing_consensus()
-        except FAILURES as exc:
-            _warn(f"Investing.com not read for the week ending {week}: {exc!r}")
-        else:
-            found = feed.get(pd.Timestamp(week))
-            if found is not None:
-                point = float(found)
-                source |= {
-                    "report": f"Economists' consensus for the week ending {week.isoformat()}, "
-                    "Investing.com",
-                    "posted": meta.get("retrieved_at"),
-                    "page": INVESTING_PAGE,
-                    "url": meta.get("url"),
-                    "note": "the last version before the release; Nasdaq's calendar gave none",
-                }
     if point is None:
         return {"source": source | {"note": "the consensus is not posted yet"}, "forecasts": []}
     return {"source": source, "forecasts": [{"target_date": week.isoformat(), "point": point}]}
