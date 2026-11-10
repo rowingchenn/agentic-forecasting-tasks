@@ -1,0 +1,151 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-saturday-hog-slaughter-live"
+keywords = ["forecasting", "live", "economy", "agriculture"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "13:50"
+AF_HORIZONS = "[1]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_saturday_hog_slaughter"
+title = "US Saturday hog slaughter"
+question = """\
+  How many hogs will be slaughtered under federal inspection in the United States this \
+  Saturday?"""
+taxonomy = "economy/economic-activity"
+driver = "economic"
+domain = "Economic activity"
+region = "United States"
+unit = "head"
+tradable = false
+summary = """\
+  The number of hogs slaughtered in federally inspected US plants on a Saturday, as USDA \
+  first reports it. Packers add Saturday shifts when hogs are plentiful, when a holiday \
+  cut the week short or when demand calls for it, so the count swings from almost none \
+  (4 head on 2026-07-04) to over 430,000 while weekdays stay near 480,000. Forecast on \
+  Fridays at midday and compared with USDA's own estimate, published that afternoon."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  Hogs slaughtered under federal inspection in the United States on the target Saturday, \
+  in head: the Hogs figure in that Saturday's row of USDA Agricultural Marketing Service \
+  report 3658, Actual Slaughter Under Federal Inspection, for the week (Sunday to \
+  Saturday) that ends on the target date, in its Final issue. A dash in the row is zero. \
+  USDA's daily estimates (report 3208) are a different quantity."""
+settlement = """\
+  First published value: the Final issue for the week, posted on USDA's My Market News \
+  on the Thursday 12 days after the Saturday, at about 12:00 ET (on 191 of 206 issues \
+  from 2022-11 to 2026-10; 8 came on the Friday of a holiday week, and 7 after the 2025 \
+  lapse in appropriations, 17 to 59 days late). The pipeline reads it from My Market \
+  News's file repository, which keeps every issue."""
+
+[metadata.agentic-forecasting.y.source]
+name = "USDA AMS, Actual Slaughter Under Federal Inspection (report 3658)"
+url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3658"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "12:05"
+every_days = 7
+first_run = "2026-11-20"
+
+[metadata.agentic-forecasting.x]
+history_start = "2024-01-07"
+frequency = "weekly, dated on the Saturdays"
+given_to = "TSFMs only; agents find their own information"
+raw = ["Each Saturday's final count with the issue of report 3658 it comes from and when that issue was posted", "Each week's Monday-Thursday estimate with its issue of report 3208", "USDA's Saturday estimates, Friday issues of report 3208"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Saturday slaughter history"
+columns = ["target"]
+what = """\
+  The target itself for every Saturday from 2024 whose Final issue was posted before the \
+  start. The newest is the Saturday 14 days before the target, posted the Thursday \
+  before, or at about 12:00 ET on the run date itself in a holiday week; the week before \
+  the target is still empty. A Saturday missing in between is filled linearly."""
+why = """\
+  The level of Saturday kills and their seasonal pattern; Saturdays after holiday weeks \
+  and in the fall run high."""
+source = "USDA AMS report 3658"
+url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3658"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Monday-Thursday estimate"
+columns = ["weekday_estimate"]
+what = """\
+  USDA's estimate of hogs slaughtered from Monday through Thursday of each week: the \
+  week-to-date figure of the newest issue of report 3208 dated Monday to Thursday of that \
+  week and posted before the start, normally Thursday's (posted about 14:00 ET) and \
+  Wednesday's in a week whose Thursday is a holiday. If the target week has none, X_d \
+  goes without this column."""
+why = """\
+  How busy the plants were in the target week; Saturday shifts make up for short or \
+  slow weeks and follow strong ones."""
+source = "USDA AMS report 3208"
+url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3208"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Federal holidays"
+columns = ["holidays"]
+what = "The number of US federal holidays from Monday to Friday of each week."
+why = "A holiday on a weekday shortens the plants' week; Saturday shifts often make up for it."
+source = "computed"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Earlier USDA estimate"
+columns = ["usda_estimate"]
+expert = true
+what = """\
+  USDA's Saturday estimate from the Friday issue of report 3208, for each past Saturday \
+  whose Friday issue was posted that Friday; a week without one carries the week before. \
+  For the target week, last week's estimate carried forward: the previous cycle's issue, \
+  since the target's own comes out after the cutoff."""
+why = """\
+  USDA collects the estimate from the packers' schedules, which public sources mostly do \
+  not show. From 2024-02 to 2026-10 it missed the final count by 3,788 head on average, \
+  against 57,438 for the mean of the four newest final Saturdays."""
+source = "USDA AMS report 3208"
+url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3208"
+
+[metadata.agentic-forecasting.baseline]
+system = "usda-estimate"
+label = "USDA estimate"
+name = "USDA AMS estimate of the Saturday's federally inspected hog slaughter"
+kind = "point"
+visible_to_agents = false
+method = """\
+  The Hogs estimate for the target Saturday in the Friday issue of USDA AMS report 3208, \
+  Daily Livestock and Poultry Slaughter (Daily Livestock Slaughter before June 2025): the \
+  issue dated the run date, posted that Friday after the 13:50 cutoff, so agents cannot \
+  see it. Of the 149 Friday issues from 2024-01 to 2026-11, 146 were posted that day; in \
+  2025 and 2026 the earliest at 13:55 ET and the median at 13:58 ET (in 2024 the \
+  repository's listing shows summer posting times an hour early, against the PDFs' own \
+  creation times). The other three came after the Saturday (the holidays 2025-07-04 and \
+  2026-07-03, and 2024-01-05, posted on 01-09). A week whose issue comes before the \
+  cutoff or after the Saturday has no B. Read from My Market News's file repository the \
+  day after the run date."""
+
+[metadata.agentic-forecasting.baseline.source]
+name = "USDA AMS, Daily Livestock and Poultry Slaughter (report 3208)"
+url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3208"
