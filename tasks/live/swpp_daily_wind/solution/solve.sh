@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 
 task = json.loads(Path("/home/user/input/task.json").read_text())
-flat = {str(q): 10000.0 for q in task["quantile_levels"]}
+flat = {str(q): 350000.0 for q in task["quantile_levels"]}
 out = Path("/home/user/output")
 (out / "collected").mkdir(parents=True, exist_ok=True)
 (out / "collected" / "index.jsonl").write_text("")
