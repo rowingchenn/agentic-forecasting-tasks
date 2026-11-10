@@ -1,7 +1,13 @@
-"""Host-only USDA chicken-price acquisition; stdlib + pandas, no API key.
+"""USDA's national advertised price of fresh conventional boneless skinless chicken breast in
+value packs, from report 2756, Weekly Grocery Store Chicken Feature Activity: X_d and
+first-published truth, both read from the report's data on My Market News, which needs no
+key. There is no public expert forecast of this price, so there is no B.
 
-Historical bootstrap is a downloaded vintage, with each row's verification and
-PDF URL retained. Live data never fill gaps by interpolation or another product.
+Each issue's data are dated by the week from a Saturday through the Friday the issue is
+posted (report_end_date); that Friday labels the week. Until 2022, issues of holiday weeks
+ended on the Thursday, which labels the next day. USDA does not revise the figure in
+practice, and truth reads the data every day, so the value recorded for a week is the one
+of its issue. The server stalls on requests without an Accept header.
 """
 
 from __future__ import annotations
@@ -11,7 +17,7 @@ import math
 import time
 from datetime import date, datetime, timedelta
 from datetime import time as clock
-from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -19,230 +25,139 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 ZONE = ZoneInfo("America/New_York")
-START = date(2021, 1, 1)
-WEB = "https://mymarketnews.ams.usda.gov/viewReport/2756"
+REPORT = "https://mymarketnews.ams.usda.gov/viewReport/2756"
 ENDPOINT = (
     "https://mymarketnews.ams.usda.gov/public_data/"
     "ajax-search-data-by-report-section/2756/Report%20Details"
 )
+FILTER = "commodity=CHICKEN;section=Parts;condition=Fresh;environment=Conventional;region=NATIONAL"
+# The item's name since September 2024, and before it, when the pack was part of the name.
+ITEMS = {("Breast, Boneless/Skinless", "Value"), ("BREAST, BONELESS/SKINLESS, VALUE PACK", None)}
+COLUMNS = ["report_date", "published_date", "report_begin_date", "report_end_date", "type",
+           "package_size", "price_unit", "price_min", "price_max", "price_avg", "store_count"]
+USER_AGENT = "agentic-forecasting/1.0"
 
 
 def _now():
     return datetime.now(ZONE)
 
 
-def _date(value):
-    return datetime.strptime(value, "%m/%d/%Y").replace(tzinfo=ZONE).date()
-
-
-def _label(day):
-    if day.weekday() not in (3, 4):
-        raise ValueError("Unexpected report end weekday; review holiday mapping.")
-    return day + timedelta(days=4 - day.weekday())
+def _guard(run_date, spec):
+    if spec["schedule"]["timezone"] != ZONE.key:
+        raise ValueError("USDA's posting times and the run schedule are in America/New_York.")
+    now = _now()
+    cutoff = datetime.combine(run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE)
+    if run_date.weekday() != 4 or now.date() != run_date or now >= cutoff:
+        raise RuntimeError("Fresh snapshots require the current Friday before the cutoff.")
+    return now
 
 
 def _get(start, end):
-    query = (
-        "commodity=CHICKEN;section=Parts;condition=Fresh;environment=Conventional;"
-        f"report_begin_date={start:%m/%d/%Y}:{end:%m/%d/%Y}"
-    )
+    """Rows of the national fresh conventional parts table whose week begins from start
+    through end. The server returns at most 1,500 rows and says so only in its counts, so a
+    range it truncates is split in two."""
+    query = f"{FILTER};report_begin_date={start:%m/%d/%Y}:{end:%m/%d/%Y}"
     url = ENDPOINT + "?" + urlencode({"q": query})
-    for attempt in range(3):
+    headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    for attempt in range(4):
         try:
-            with urlopen(
-                Request(url, headers={"User-Agent": "agentic-forecasting/1.0"}),
-                timeout=60,
-            ) as response:
-                result = json.load(response)
+            with urlopen(Request(url, headers=headers), timeout=90) as response:
+                payload = json.load(response)
             break
-        except (OSError, TimeoutError):
-            if attempt == 2:
+        except HTTPError as exc:
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:
                 raise
-            time.sleep(2**attempt)
-    stats, rows = result["stats"], result["results"]
+        except (URLError, TimeoutError, ConnectionError):
+            if attempt == 3:
+                raise
+        time.sleep(2**attempt)
+    stats, rows = payload["stats"], payload["results"]
     if stats["returnedRows"] != len(rows):
-        raise ValueError("USDA response row count mismatch.")
-    if stats["totalRows"] != stats["returnedRows"]:
-        if start == end:
-            raise ValueError("Single-day USDA response is truncated.")
-        mid = start + (end - start) // 2
-        left, a = _get(start, mid)
-        right, b = _get(mid + timedelta(days=1), end)
-        return left + right, a + b
-    for row in rows:
-        if not start <= _date(row["report_begin_date"]) <= end:
-            raise ValueError("USDA ignored requested date range.")
-        if (row["section"], row["condition"], row["environment"]) != (
-            "Parts",
-            "Fresh",
-            "Conventional",
-        ):
-            raise ValueError("USDA ignored product filters.")
-    return rows, [url]
+        raise ValueError("My Market News returned a different number of rows than it reports.")
+    if stats["totalRows"] > len(rows):
+        if start >= end:
+            raise ValueError("My Market News truncated a single day's rows.")
+        middle = start + (end - start) // 2
+        return _get(start, middle) + _get(middle + timedelta(days=1), end)
+    return rows
 
 
-def _select(rows, as_of):
-    values = {}
-    # Source has exact duplicate records. Conflicting selected rows fail below.
-    unique = {json.dumps(r, sort_keys=True): r for r in rows}
-    for row in unique.values():
-        legacy = (
-            row["type"] == "BREAST, BONELESS/SKINLESS, VALUE PACK"
-            and row["package_size"] is None
-        )
-        current = (
-            row["type"] == "Breast, Boneless/Skinless"
-            and row["package_size"] == "Value"
-        )
-        if not (legacy or current) or row["region"].upper() != "NATIONAL":
-            continue
-        if (
-            str(row["commodity"]).upper() != "CHICKEN"
-            or row["price_unit"] != "Per lb"
-            or int(row["slug_id"]) != 2756
-        ):
-            raise ValueError("Unexpected commodity, report or price unit.")
-        begin, end = _date(row["report_begin_date"]), _date(row["report_end_date"])
-        label = _label(end)
-        if (end - begin).days != 6:
-            raise ValueError("Expected a seven-day reporting period.")
-        if label > as_of:
-            continue
-        price, stores = row["price_avg"], row["store_count"]
-        if (
-            isinstance(price, bool)
-            or not isinstance(price, (int, float))
-            or not math.isfinite(price)
-            or price <= 0
-            or abs(price * 100 - round(price * 100)) > 1e-7
-            or isinstance(stores, bool)
-            or not isinstance(stores, (int, float))
-            or not math.isfinite(stores)
-            or stores <= 0
-            or int(stores) != stores
-        ):
-            raise ValueError("Invalid price or advertising store count.")
-        if label in values:
-            raise ValueError("Conflicting/ambiguous national records for one week.")
-        values[label] = {"target": float(price), "advertising_store_count": int(stores)}
-    return values
-
-
-def _history(as_of):
-    bootstrap = pd.read_csv(Path(__file__).with_name("historical.csv"))
-    labels = pd.to_datetime(bootstrap.week_ending_label)
-    if labels.duplicated().any() or not labels.equals(
-        pd.Series(pd.date_range(START, "2023-12-29", freq="W-FRI"))
-    ):
-        raise ValueError("Historical bootstrap date coverage changed.")
-    historical = bootstrap.set_index(labels)[
-        ["price_usd_per_lb", "advertising_store_count"]
-    ]
-    historical.columns = ["target", "advertising_store_count"]
-    historical = historical.loc[historical.index.date <= as_of]
-    urls, rows = [], []
-    if as_of >= date(2024, 1, 1):
-        # Include December beginnings for the first January reporting week.
-        rows, urls = _get(date(2023, 12, 30), as_of)
-        selected = _select(rows, as_of)
-        live = pd.DataFrame.from_dict(selected, orient="index")
-        if not live.empty:
-            live.index = pd.to_datetime(live.index)
-            historical = pd.concat([historical, live]).sort_index()
-    if historical.index.duplicated().any():
-        raise ValueError("Duplicate historical/live boundary.")
-    historical.index.name = "timestamp"
-    expected = pd.date_range(START, as_of, freq="W-FRI", name="timestamp")
-    return historical.reindex(expected), bootstrap, rows, urls
-
-
-def _guard(run_date, spec):
-    now = _now()
-    if (
-        run_date.weekday() != 4
-        or spec["horizons"] != [7]
-        or spec["schedule"]["timezone"] != ZONE.key
-        or spec["schedule"]["cutoff"] != "15:50"
-        or spec["x"]["history_start"] != START.isoformat()
-    ):
-        raise ValueError(
-            "Require Friday, +7 days, 15:50 Eastern and January 2021 history."
-        )
-    start = datetime.combine(run_date, clock(14, 0), ZONE)
-    cutoff = start.replace(hour=15, minute=50)
-    if now.date() != run_date or not start <= now < cutoff:
-        raise RuntimeError(
-            "Fresh snapshots require the current Friday 14:00–15:50 Eastern."
-        )
-    return now
+def _weekly(start, today):
+    """Every Friday from start through the latest one published by today (NaN for a week
+    without an issue), and the rows it is read from."""
+    if start.weekday() != 4:
+        raise ValueError("history_start must be a Friday.")
+    rows = pd.DataFrame(_get(start - timedelta(days=7), today), columns=COLUMNS)
+    item = [(t, None if pd.isna(p) else p) in ITEMS for t, p in zip(rows["type"], rows["package_size"])]
+    rows = rows[item].copy()
+    if rows.empty:
+        raise ValueError("No national price in the requested range.")
+    if (rows["price_unit"] != "Per lb").any():
+        raise ValueError("The price is no longer per pound.")
+    end = pd.to_datetime(rows["report_end_date"], format="%m/%d/%Y")
+    if not end.dt.weekday.isin([3, 4]).all():
+        raise ValueError("Expected weeks that end on a Friday, or a Thursday before a holiday.")
+    rows["week"] = end + pd.to_timedelta(4 - end.dt.weekday, unit="D")
+    rows = rows[(rows["week"] >= pd.Timestamp(start)) & (rows["week"] <= pd.Timestamp(today))]
+    # The data repeat some rows; were a week ever posted twice, its first issue settles it.
+    posted = pd.to_datetime(rows["published_date"], format="%m/%d/%Y %H:%M:%S")
+    rows = rows.assign(posted=posted).sort_values(["week", "posted"]).drop_duplicates("week")
+    # a week without a positive price is left empty, as one without an issue
+    prices = pd.to_numeric(rows["price_avg"], errors="coerce")
+    prices = prices.where(prices.map(lambda p: math.isfinite(p) and p > 0))
+    if prices.isna().all():
+        raise ValueError("No valid national price in the requested range.")
+    values = pd.Series(prices.to_numpy(), index=pd.DatetimeIndex(rows["week"]), name="target")
+    index = pd.date_range(start, values.index.max(), freq="W-FRI", name="timestamp")
+    raw = rows.drop(columns="posted").assign(week=rows["week"].dt.strftime("%Y-%m-%d"))
+    return values.reindex(index), raw
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
-    history, bootstrap, rows, urls = _history(run_date)
-    if (
-        history.empty
-        or history.isna().any().any()
-        or history.index[-1].date() != run_date
-    ):
-        raise RuntimeError(
-            "Missing current report or intervening week; skip stale/incomplete run."
-        )
+    start = date.fromisoformat(spec["x"]["history_start"])
+    history, raw = _weekly(start, run_date)
+    last = history.last_valid_index().date()
+    # The issue is posted on the Friday morning, so a run normally has the run date's week.
+    # A late issue leaves that week empty; a run day is refused only when two are missing.
+    if last < run_date - timedelta(days=7):
+        raise RuntimeError(f"USDA's latest published week is {last}; two issues are missing.")
     _guard(run_date, spec)
-    index = pd.date_range(
-        START, run_date + timedelta(days=7), freq="W-FRI", name="timestamp"
+    targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
+    if any(d.weekday() != 4 for d in targets):
+        raise ValueError("Target dates must be Fridays.")
+    index = pd.date_range(start, max(targets), freq="W-FRI", name="timestamp")
+    series = pd.DataFrame(
+        {
+            "target": history.reindex(index),
+            "iso_week": index.isocalendar().week.to_numpy(dtype=int),
+            "month": index.month,
+        },
+        index=index,
     )
-    series = history[["target"]].reindex(index)
-    series["iso_week"] = index.isocalendar().week.to_numpy(dtype=int)
-    series["month"] = index.month
     return {
         "series": series,
-        "last_observed": run_date,
-        "raw": {
-            "verified_historical_bootstrap.csv": bootstrap,
-            "usda_report_details.csv": pd.DataFrame(rows),
-        },
+        "last_observed": last,
+        "raw": {"usda_2756_national_value_pack_breast.csv": raw},
         "sources": {
-            "usda": {
-                "name": "USDA AMS report 2756",
-                "url": WEB,
-                "queries": urls,
-                "rights": "https://www.usda.gov/policies-and-links",
-            },
+            "price": {"name": "USDA AMS report 2756, Weekly Grocery Store Chicken Feature "
+                      "Activity", "url": REPORT, "query": FILTER},
             "as_of": as_of.isoformat(),
-            "bootstrap": "2021-2023 downloaded vintage, independently PDF-verified",
         },
         "covariate_notes": {
-            "iso_week": "ISO week of the Friday reporting-week label.",
-            "month": "Month of the Friday reporting-week label.",
+            "iso_week": "ISO week number of the Friday; may be 53.",
+            "month": "Month of the Friday.",
         },
     }
 
 
 def truth(today: date, spec: dict) -> pd.Series:
     if today > _now().date():
-        raise RuntimeError("Cannot settle a future date.")
-    # Pipeline update_truth preserves the first captured nonmissing observation.
-    return _history(today)[0]["target"].dropna()
+        raise RuntimeError("Cannot settle future dates.")
+    # update_truth keeps the first value recorded for each Friday; a week without an issue
+    # is left out.
+    return _weekly(date.fromisoformat(spec["x"]["history_start"]), today)[0].dropna()
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    # This interface is reserved for a matching public expert forecast.
-    return {
-        "source": {"report": "No matching public weekly expert forecast verified"},
-        "forecasts": [],
-    }
-
-
-def reference_forecast(series: pd.Series) -> float:
-    """Simple reference: arithmetic mean of the latest four consecutive observations.
-
-    Call with snapshot's observed target only. This is not a public expert B issue.
-    """
-    observed = series.dropna()
-    last = observed.tail(4)
-    if len(last) != 4 or not last.index.equals(
-        pd.date_range(last.index[0], periods=4, freq="W-FRI")
-    ):
-        raise ValueError("Reference requires four consecutive observed Friday weeks.")
-    return float(last.mean())
+    return {"source": {"name": "none: no public expert forecast of this series"}, "forecasts": []}
