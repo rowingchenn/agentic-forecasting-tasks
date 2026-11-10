@@ -33,16 +33,14 @@ separate processes), so the host copies answer instead.
   half-hour against 10 MB for a month of those files. It is read in full once, then for the
   last four weeks.
 - B: Wholesale/Datasets/ForecastPrices/PRSL/YYYY/PRSLYYYYMMDD.zip, the day's twelve runs of the
-  long price-responsive schedule, posted at 16:10 UTC that day: 05:10 NZDT or 04:10 NZST the
-  next morning. EMI redirects to a public blob store that honours byte ranges, so a run is read
-  with three ranges: one byte for the size, the last 4 kB for the zip's directory, then the
-  run, about 85 kB in all.
+  long price-responsive schedule, about 1 MB, posted at 16:10 UTC that day: 05:10 NZDT or
+  04:10 NZST the next morning.
 
 Kept on the host, in ~/.cache/agentic-forecasting/nz_otahuhu_daily_price/: the report's
 complete days, the first print read for each day, and the B read for each run date.
 
-Before the first run day, the maintainer can fill the expert column's year once, about 1,100
-requests over 25 minutes, from the pipeline repository:
+Before the first run day, the maintainer can fill the expert column's year once, 366 zips
+(about 370 MB, half an hour), from the pipeline repository:
 
     uv run python -c "from af.archive import spec, today; from af.target import fetch; \\
         t = 'nz_otahuhu_daily_price'; print(fetch(t).backfill(today(t), spec(t)))"
@@ -58,9 +56,9 @@ import io
 import math
 import os
 import re
-import struct
 import sys
 import time
+import zipfile
 import zlib
 from collections import defaultdict
 from datetime import date, datetime, timedelta
@@ -93,7 +91,7 @@ PRSL_CREDIT = (
 )
 USER_AGENT = "agentic-forecasting/1.0"
 TRIES = 4  # requests per file, after server errors, dropped connections and pages that do not parse
-TIMEOUT = 20  # seconds for a request: a price file, a zip's range, the report's last weeks
+TIMEOUT = 20  # seconds for a request: a price file, a PRSL zip, the report's last weeks
 FULL_TIMEOUT = 120  # seconds for the report's first reading, the whole history (about 10 s)
 PAUSE = 1.0  # seconds from one request to EMI to the next
 LATE_TRIES = 1  # asks again once for yesterday's interim prices when the snapshot finds none,
@@ -106,8 +104,6 @@ REUSE = timedelta(hours=1)  # the report is read at most once an hour
 EXPERT_DAYS = 365  # days back the expert column holds PRSL forecasts
 BACKFILL = 10  # PRSL runs a snapshot reads at most ...
 BUDGET = 90  # ... and seconds it spends on them
-TAIL = 4096  # bytes at the end of a zip read for its directory
-MARGIN = 1024  # bytes read past a run's local header, for its name
 CACHE_VERSION = "v1"  # in the host files' names; raise it when a file's meaning changes
 FAILURES = (OSError, HTTPException, ValueError, csv.Error)
 REPORT_HEADER = "Point of connection,Trading date,Trading period,$/MWh,Price status"
@@ -153,33 +149,25 @@ def _timed_out(exc: BaseException) -> bool:
     return isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError)
 
 
-def _fetch(
-    url: str,
-    parse,
-    byte_range: tuple[int, int] | None = None,
-    tries: int = TRIES,
-    timeout: float = TIMEOUT,
-):
-    """parse(body, headers) of the response, asking again after server errors, dropped
-    connections and a body that does not parse (a maintenance page served with status 200),
-    up to `tries` times. A rate limit (429) or another client error is not asked again. Nor is
-    a timeout, after which the rest of the process asks EMI nothing, so that a hanging EMI
-    costs each of the pipeline's steps one timeout."""
+def _fetch(url: str, parse, timeout: float = TIMEOUT):
+    """parse(body) of the response, asking again after server errors, dropped connections and
+    a body that does not parse (a maintenance page served with status 200), up to TRIES
+    times. A rate limit (429) or another client error is not asked again. Nor is a timeout,
+    after which the rest of the process asks EMI nothing, so that a hanging EMI costs each of
+    the pipeline's steps one timeout."""
     global _last_request, _unresponsive
     if _unresponsive:
         raise TimeoutError("EMI timed out earlier in this run and is not asked again")
     headers = {"User-Agent": USER_AGENT, "Accept": "*/*"}
-    if byte_range is not None:
-        headers["Range"] = f"bytes={byte_range[0]}-{byte_range[1]}"
-    for attempt in range(tries):
+    for attempt in range(TRIES):
         wait = PAUSE - (time.monotonic() - _last_request)
         if wait > 0:
             time.sleep(wait)
         try:
             with urlopen(Request(url, headers=headers), timeout=timeout) as response:
-                return parse(response.read(), response.headers)
+                return parse(response.read())
         except HTTPError as exc:
-            if exc.code not in (500, 502, 503, 504) or attempt == tries - 1:
+            if exc.code not in (500, 502, 503, 504) or attempt == TRIES - 1:
                 raise
             retry = str(exc.headers.get("Retry-After", "")) if exc.headers else ""
             delay = min(120, int(retry)) if retry.isdigit() else 2**attempt
@@ -187,7 +175,7 @@ def _fetch(
             if _timed_out(exc):
                 _unresponsive = True
                 raise
-            if attempt == tries - 1:
+            if attempt == TRIES - 1:
                 raise
             delay = 2**attempt
         finally:
@@ -245,7 +233,7 @@ def _times(values: pd.Series) -> None:
 # --- EMI's single-node report: the history -------------------------------------------------------
 
 
-def _parse_report(body: bytes, headers=None) -> pd.DataFrame:
+def _parse_report(body: bytes) -> pd.DataFrame:
     """EMI's single-node report as one row per complete trading day: the date, the mean price,
     the number of half-hours and the status, Final when every half-hour is. A half-hour listed
     both as Interim and as Final (all 48 of 2023-03-16, at equal prices) counts once, as Final;
@@ -354,7 +342,7 @@ def _report_days(report: pd.DataFrame) -> dict[date, dict]:
 # --- interim prices: the first print ------------------------------------------------------------
 
 
-def _parse_prices(body: bytes, headers=None) -> dict[date, dict[int, float]]:
+def _parse_prices(body: bytes) -> dict[date, dict[int, float]]:
     """An EMI price file: OTA2201's price for each trading period, by trading day."""
     reader = csv.reader(io.StringIO(body.decode("utf-8-sig", errors="replace")))
     if next(reader, None) != PRICES_HEADER:
@@ -435,91 +423,16 @@ def _remember_print(day: date, found: dict) -> dict[date, dict]:
 # --- the PRSL schedule: B and the expert column --------------------------------------------------
 
 
-def _first_byte(body: bytes, headers) -> tuple[int, bytes | None]:
-    """The size of a file from a one-byte range; when the range was ignored, the whole file."""
-    span = str(headers.get("Content-Range") or "")
-    found = re.fullmatch(r"bytes 0-0/(\d+)", span)
-    if found and len(body) == 1:
-        return int(found[1]), None
-    if not span and body[:4] == b"PK\x03\x04":
-        return len(body), body
-    raise ValueError(f"EMI answered the first byte with {span or len(body)}")
-
-
-def _unpack(layout: str, data: bytes) -> tuple:
-    """struct.unpack, failing like the other reads (ValueError) on a buffer cut short."""
+def _parse_zip(body: bytes) -> zipfile.ZipFile:
+    """A day's PRSL zip, with every member's checksum verified."""
     try:
-        return struct.unpack(layout, data)
-    except struct.error as exc:
-        raise ValueError(f"a zip record is cut short: {exc}") from exc
-
-
-def _span(first: int, last: int, size: int):
-    def parse(body: bytes, headers) -> bytes:
-        span = headers.get("Content-Range")
-        if span != f"bytes {first}-{last}/{size}" or len(body) != last - first + 1:
-            raise ValueError(f"EMI answered bytes {first}-{last} with {span}")
-        return body
-
-    return parse
-
-
-class _Zip:
-    """A zip on EMI read by byte range: one byte for its size, its last 4 kB for the directory,
-    then the members asked for. A server that ignores ranges sends the whole file, which is
-    then read from memory."""
-
-    def __init__(self, url: str, tries: int = TRIES):
-        self.url, self.tries = url, tries
-        self.size, self.whole = _fetch(url, _first_byte, (0, 0), tries)
-        first = max(0, self.size - TAIL)
-        tail = self._read(first, self.size - 1)
-        end = tail.rfind(b"PK\x05\x06")
-        if end < 0 or len(tail) < end + 22:
-            raise ValueError(f"{url} has no zip directory")
-        count, length, offset = _unpack("<HII", tail[end + 10 : end + 20])
-        if offset >= first:
-            directory = tail[offset - first : offset - first + length]
-        else:
-            directory = self._read(offset, offset + length - 1)
-        self.members, at = [], 0
-        for _ in range(count):
-            if directory[at : at + 4] != b"PK\x01\x02":
-                raise ValueError(f"{url} has a damaged zip directory")
-            (method,) = _unpack("<H", directory[at + 10 : at + 12])
-            crc, packed = _unpack("<II", directory[at + 16 : at + 24])
-            name_length, extra, comment = _unpack("<HHH", directory[at + 28 : at + 34])
-            (local,) = _unpack("<I", directory[at + 42 : at + 46])
-            name = directory[at + 46 : at + 46 + name_length].decode("latin-1")
-            self.members.append(
-                {"name": name, "method": method, "crc": crc, "size": packed, "offset": local}
-            )
-            at += 46 + name_length + extra + comment
-
-    def _read(self, first: int, last: int) -> bytes:
-        if self.whole is not None:
-            return self.whole[first : last + 1]
-        return _fetch(self.url, _span(first, last, self.size), (first, last), self.tries)
-
-    def text(self, member: dict) -> str:
-        start, size = member["offset"], member["size"]
-        blob = self._read(start, min(start + 30 + MARGIN + size, self.size) - 1)
-        if blob[:4] != b"PK\x03\x04":
-            raise ValueError(f"{member['name']} has no local header")
-        name_length, extra = _unpack("<HH", blob[26:30])
-        begin = 30 + name_length + extra
-        data = blob[begin : begin + size]
-        if len(data) < size:
-            data = self._read(start + begin, start + begin + size - 1)
-        if member["method"] not in (0, 8):
-            raise ValueError(f"{member['name']} is packed with method {member['method']}")
-        try:
-            raw = zlib.decompress(data, -15) if member["method"] == 8 else data
-        except zlib.error as exc:
-            raise ValueError(f"{member['name']} does not inflate: {exc}") from exc
-        if zlib.crc32(raw) != member["crc"]:
-            raise ValueError(f"{member['name']} is damaged")
-        return raw.decode("latin-1")
+        archive = zipfile.ZipFile(io.BytesIO(body))
+        damaged = archive.testzip()
+    except (zipfile.BadZipFile, zlib.error, EOFError) as exc:
+        raise ValueError(f"the PRSL zip does not unpack: {exc}") from exc
+    if damaged is not None:
+        raise ValueError(f"{damaged} in the PRSL zip is damaged")
+    return archive
 
 
 def _forecast_prices(text: str, day: date) -> dict[int, float]:
@@ -536,15 +449,14 @@ def _forecast_prices(text: str, day: date) -> dict[int, float]:
     return prices
 
 
-def prsl_issue(run_date: date, spec: dict, tries: int = TRIES) -> dict | None:
+def prsl_issue(run_date: date, spec: dict) -> dict | None:
     """B of a run date: of the PRSL runs stamped at or after the cutoff, the first with a
     forecast price at OTA2201 for every trading period of the next day, and the mean of those
     prices. The 12:10 run reaches the end of the next day; before a 50-half-hour day it stops
     two half-hours short and the 14:10 run is the one. None, with a warning, when EMI has no
     zip for the day yet or no run covers the next day; a failed request raises."""
-    url = PRSL.format(day=run_date)
     try:
-        archive = _Zip(url, tries)
+        archive = _fetch(PRSL.format(day=run_date), _parse_zip)
     except HTTPError as exc:
         if exc.code != 404:
             raise
@@ -554,18 +466,18 @@ def prsl_issue(run_date: date, spec: dict, tries: int = TRIES) -> dict | None:
     need = half_hours(tomorrow)
     cutoff = clock.fromisoformat(spec["schedule"]["cutoff"])
     runs = []
-    for member in archive.members:
-        found = RUN_NAME.fullmatch(member["name"])
+    for name in archive.namelist():
+        found = RUN_NAME.fullmatch(name)
         if found and found[1] == f"{run_date:%Y%m%d}":
             issued = datetime.strptime(found[1] + found[2], "%Y%m%d%H%M%S").replace(tzinfo=ZONE)
             if issued.time() >= cutoff:
-                runs.append((issued, member))
-    for issued, member in sorted(runs, key=lambda run: run[0]):
-        prices = _forecast_prices(archive.text(member), tomorrow)
+                runs.append((issued, name))
+    for issued, name in sorted(runs):
+        prices = _forecast_prices(archive.read(name).decode("latin-1"), tomorrow)
         if sorted(prices) == list(range(1, need + 1)):
             return {
                 "run_date": run_date,
-                "run": member["name"],
+                "run": name,
                 "issued": issued,
                 "target_date": tomorrow,
                 "forecast": round(sum(prices.values()) / need, 6),
