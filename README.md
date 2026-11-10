@@ -27,7 +27,7 @@ materials it used.
 
 | File | Content |
 |---|---|
-| `task.toml` | the Task (public network, no sudo, 90 minutes), the day's schedule and the target, see below |
+| `task.toml` | the Task (public network, no sudo, 90 minutes, 8 CPUs and 32 GB of memory, the same for every target), the day's schedule and the target, see below |
 | `instruction.md` | what to forecast, with the settlement definition precise enough to reproduce independently; the output format. ALE gives it to the agent verbatim |
 | `environment/Dockerfile` | the sandbox: an ALE base image plus the libraries an agent is likely to want |
 | `environment/setup/setup.sh` | writes `/home/user/input/task.json` (run date, target dates, cutoff, quantile levels) from the clock and the `AF_*` variables; in a continuing episode it first moves the previous day's output to `/home/user/history/<run date>/` |
