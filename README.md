@@ -175,18 +175,28 @@ Revise the taxonomy in the same pull request when a target fits no leaf.
 |---|---|---|---|---|
 | `aapl_daily_close` | Apple's official Nasdaq closing price (a tradable control) | Mondays, cutoff 18:35 ET | 1–4, 7 days | no change from Monday's close (reference) |
 | `boc_usd_cad` | Bank of Canada USD/CAD daily rate (a tradable control) | Mondays, cutoff 19:00 ET | 1–4, 7 days | no change from Monday's rate (reference) |
+| `cbot_corn_settle` | CBOT nearby corn futures settlement, US cents per bushel (a tradable control) | Mondays, cutoff 18:35 ET | 1–4, 7 days | no change from Monday's settlement of each date's contract (reference) |
+| `conus_drought_area` | Share of the contiguous US in drought (D1–D4) on the U.S. Drought Monitor map (%) | Thursdays, cutoff 13:45 ET | 5 and 12 days | none |
 | `ercot_peak_load` | ERCOT daily system peak load (MW) | daily, cutoff 09:25 CT | 1–7 days | ERCOT seven-day load forecast |
 | `gb_gas_demand` | GB daily gas demand, NTS (mcm) | daily, cutoff 14:45 UK | 1 day | National Gas day-ahead forecast (seen by agents) |
+| `gdelt_ai_news_volume` | GDELT daily news articles about AI (distinct article URLs in the daily event file) | daily, cutoff 10:00 UTC | 1–7 days | none |
 | `kp_index_daily_max` | Planetary Kp index, daily maximum | daily, cutoff 12:20 UTC | 1–2 days | SWPC 3-day forecast |
 | `lax_daily_tmax` | Los Angeles Intl Airport daily maximum temperature (°F) | daily, cutoff 18:20 UTC | 1–6 days | NWS forecast high |
 | `mississippi_st_louis_stage` | Mississippi River daily mean stage at St. Louis (ft) | daily, cutoff 18:40 CT | 1–13 days | NWS river forecast |
 | `mta_bt_daily_crossings` | MTA bridges and tunnels daily vehicle crossings | Mondays, cutoff 20:50 ET | 1–7 days | none |
 | `norway_structural_liquidity` | Norwegian banking system structural liquidity (NOK bn) | Mondays, cutoff 14:15 Oslo | 1–4, 7 days | Norges Bank liquidity forecast (seen by agents) |
+| `nz_otahuhu_daily_price` | New Zealand daily mean wholesale electricity price at Otahuhu (NZ$/MWh) | daily, cutoff 12:00 Auckland | 1 day | pricing manager's PRSL forecast |
 | `rio_weekly_dengue` | Rio de Janeiro weekly reported dengue cases (InfoDengue, settled 28 days after the week) | Saturdays, cutoff 18:45 São Paulo | 1 and 8 days | none |
 | `scotland_weekly_ae` | Scotland weekly unplanned Type 1 A&E attendances | Sundays, cutoff 18:45 UK | 7 and 14 days | none |
+| `swpp_daily_wind` | Southwest Power Pool daily wind generation without batteries (MWh, EIA-930) | daily, cutoff 13:50 CT | 1–7 days | none |
 | `toronto_aqhi` | Toronto daytime maximum AQHI | daily, cutoff 05:50 ET | 0–1 days | ECCC AQHI forecast |
 | `tsa_checkpoint_throughput` | TSA daily checkpoint travel numbers, nationwide | daily, cutoff 13:00 ET | 1–7 days | none |
 | `us_flu_hospital_admissions` | US weekly influenza hospital admissions (NHSN) | Wednesdays, cutoff 14:05 ET | 3, 10, 17, 24 days | CDC FluSight ensemble |
+| `us_initial_jobless_claims` | US weekly initial jobless claims, seasonally adjusted (DOL advance figure) | Thursdays, cutoff 10:45 ET | 2, 9, 16, 23 days | economists' consensus |
+| `us_natgas_storage_change` | US weekly change in Lower 48 working gas in storage (Bcf, EIA) | Thursdays, cutoff 12:30 ET | 1, 8, 15, 22 days | economists' consensus |
+| `us_saturday_hog_slaughter` | US federally inspected hog slaughter on Saturdays (USDA AMS) | Fridays, cutoff 13:50 ET | 1 day | USDA estimate |
+| `us_weekly_corn_export_inspections` | US weekly corn inspected for export (metric tons, USDA FGIS) | Thursdays, cutoff 15:50 ET | 7 days | none |
+| `us_weekly_gasoline_price` | US weekly regular gasoline retail price (USD/gallon, EIA) | Thursdays, cutoff 13:50 ET | 4 and 11 days | none |
 | `vercel_anthropic_spend_share` | Anthropic's share of Vercel AI Gateway spend (%) | daily, cutoff 18:30 ET | 1–7 days | Kalshi market median, on the dates it lists (seen by agents) |
 | `wikipedia_ai_pageviews` | English Wikipedia "Artificial intelligence" daily user page views | daily, cutoff 13:45 UTC | 1–7 days | none |
 
