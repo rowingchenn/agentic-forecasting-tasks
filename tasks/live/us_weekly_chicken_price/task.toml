@@ -3,16 +3,16 @@ artifacts = ["/home/user/output"]
 
 [task]
 name = "agentic-forecasting/us-weekly-chicken-price-live"
-keywords = ["forecasting", "live", "economy", "consumer-prices", "chicken"]
+keywords = ["forecasting", "live", "economy", "food-prices"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/New_York"
-AF_CUTOFF = "15:50"
-AF_HORIZONS = "[7]"
+AF_CUTOFF = "17:15"
+AF_HORIZONS = "[7, 14]"
 AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
 
 [agent]
@@ -31,46 +31,79 @@ network_justification = """\
 [metadata.agentic-forecasting]
 target = "us_weekly_chicken_price"
 title = "US weekly advertised chicken-breast price"
-question = "What national advertised price per pound will USDA report for fresh conventional boneless/skinless chicken breast in value packs for next Friday's reporting week?"
+question = """\
+  What national average advertised price for boneless skinless chicken breast in value \
+  packs will USDA report for each of the next two weeks?"""
 taxonomy = "economy/consumer-prices"
 driver = "economic"
-domain = "Economy and labor"
+domain = "Food prices"
 region = "United States, including Alaska and Hawaii"
 unit = "USD/lb"
 tradable = false
-summary = "A weekly store-count-weighted advertised promotional retail price, not a transaction average, CPI or wholesale price. Promotions, input costs and retailer selection affect the series."
+summary = """\
+  The average price at which major US grocery chains advertise fresh boneless skinless \
+  chicken breast in value packs in their weekly ads, weighted by the number of stores each \
+  ad covers, as the US Department of Agriculture (USDA) reports it every Friday. It is a \
+  promotional price, not the average shelf or checkout price. Its level moves over months \
+  with the chicken market; from week to week it moves with which chains feature the item \
+  and at what price, so the chains' ads and the wholesale market add information that \
+  history alone does not contain."""
 
 [metadata.agentic-forecasting.y]
-definition = "USDA AMS report 2756, Report Details: commodity Chicken, section Parts, condition Fresh, environment Conventional, region NATIONAL, price_unit Per lb; type Breast, Boneless/Skinless and package_size Value. Before September 2024 type is BREAST, BONELESS/SKINLESS, VALUE PACK with null package_size. Use price_avg, the national store-count-weighted advertised price. A Friday labels the reporting week; early holiday Thursday report ends retain the Friday of that ISO week. No mixing other products or packs."
-settlement = "The first value captured from the official report's structured data for that Friday reporting-week label. The pipeline retains the first recorded value and does not replace it with revisions. Missing rows remain unsettled, never zero or carried forward. Historical bootstrap observations are downloaded vintages checked against archived PDFs, not reconstructed first releases. A missing live week or changed schema requires maintainer review; skip rather than substitute another product."
+definition = """\
+  USDA AMS report 2756, Weekly Grocery Store Chicken Feature Activity, Report Details: the \
+  row with region NATIONAL, section Parts, type "Breast, Boneless/Skinless" and \
+  package_size Value (before September 2024 the type "BREAST, BONELESS/SKINLESS, VALUE \
+  PACK"), environment Conventional, condition Fresh, price_unit Per lb, in the issue whose \
+  report_end_date is the target Friday; its price_avg, the average of the advertised \
+  prices over the eight regions including Alaska and Hawaii, weighted by the number of \
+  stores each ad covers, in dollars per pound."""
+settlement = """\
+  First published value, normally in the issue USDA posts on the Friday that ends the \
+  week, or earlier in the week when the Friday is a federal holiday. Of the 149 issues \
+  from 2024 to 2026-11-06, 145 were posted on the Friday, between 09:46 and 13:59 Eastern \
+  (half by 11:29), and four earlier in a week whose Friday was a holiday. The pipeline \
+  reads the report's data every day at 15:30 Eastern and keeps the first value it \
+  sees. USDA does not revise the figure in practice: today's data match the PDF issues as \
+  posted, in all 153 weeks of 2021 to 2023 compared and in the issues of 2025-09-26 and \
+  2026-11-06. A week without an issue is not scored."""
 
 [metadata.agentic-forecasting.y.source]
-name = "USDA Agricultural Marketing Service, Weekly Grocery Store Chicken Feature Activity (2756)"
+name = "USDA Agricultural Marketing Service, Weekly Grocery Store Chicken Feature Activity (report 2756)"
 url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
 
 [metadata.agentic-forecasting.schedule]
-snapshot = "14:00"
+snapshot = "15:30"
 every_days = 7
-# Placeholder; maintainer sets this Friday when enabling the timer.
 first_run = "2026-11-13"
 
 [metadata.agentic-forecasting.x]
 history_start = "2021-01-01"
-frequency = "weekly, Friday reporting-week labels; no daily interpolation"
+frequency = "weekly, weeks dated on the Friday that ends them"
 given_to = "TSFMs only; agents find their own information"
-raw = ["Verified 2021-2023 historical bootstrap with official PDF links", "USDA Report Details rows from 2024 onward"]
+raw = ["The national value-pack breast rows of report 2756 as published at the snapshot, with the number of stores advertising and the price range"]
 
 [[metadata.agentic-forecasting.x.groups]]
-name = "Weekly advertised price history"
+name = "Advertised price history"
 columns = ["target"]
-what = "National advertised prices from January 2021 through the current Friday's report. Future prices are empty; advertising store counts are retained in raw data only. The run stops if the current report or any intervening week is missing."
-why = "Recent promotion prices describe the current level; earlier years provide context for possible seasonality."
-source = "USDA AMS report 2756; historical bootstrap checked against original PDFs"
+what = """\
+  The target itself, every week from the one ending 2021-01-01 through the run date's, \
+  posted that morning. The four weeks the report's data lack (2022-04-01, 2022-09-16, \
+  2022-12-02, 2023-01-13) and a week whose issue is late are left empty."""
+why = """\
+  The level moves over months: the yearly average was $2.27 in 2021, $2.94 in 2022, $2.39 \
+  in 2023 and $2.86 in 2025. Around it the weekly price varies by about 21 cents (the \
+  standard deviation since 2024 around a 13-week average), with little carried from one \
+  week to the next, so an average of recent weeks carries most of the signal."""
+source = "USDA AMS report 2756, Report Details"
 url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
 
 [[metadata.agentic-forecasting.x.groups]]
 name = "Calendar"
 columns = ["iso_week", "month"]
-what = "ISO week and month of the Friday reporting-week label, known through the target week."
-why = "Retail promotion calendars and food demand can vary with the season."
+what = "ISO week number and month of each Friday, including the target dates."
+why = """\
+  Chains advertise chicken about a quarter less in November and December, when the \
+  holiday ads feature turkey, and most in July and August. The price itself shows little \
+  seasonal pattern."""
 source = "computed"
