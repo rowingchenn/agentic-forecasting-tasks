@@ -11,11 +11,13 @@ bushel. The nearby contract is, among the listed months March, May, July, Septem
 December, the one nearest to expiry whose last trading day is on or after the target
 date; a contract's last trading day is the business day before the 15th calendar day of
 its contract month. On the session after a contract's last trading day the target moves
-to the next contract. On a date without a session (weekends and exchange holidays), the
-target is the previous session's settlement price. The run date's own settlement is
-published before this task starts. A forecast is settled on the first settlement price
-published for that date. Intraday prices, the last traded price and prices of other
-contract months are different quantities.
+to the next contract: in a week with a last trading day, the target dates after it are
+settlements of the next contract month, not of the contract the run date settled on. On
+a date without a session (weekends and exchange holidays), the target is the previous
+session's settlement price. The run date's own settlement is published before this task
+starts. A forecast is settled on the first settlement price published for that date.
+Intraday prices, the last traded price and prices of contract months other than a target
+date's nearby contract are different quantities.
 
 ## Inputs and environment
 
