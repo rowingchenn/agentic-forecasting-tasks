@@ -198,7 +198,7 @@ def _load():
             row["value"] = int(row["value"]) if row["value"] else None
             row["tries"] = int(row.get("tries") or 0)
         return rows
-    except (OSError, ValueError, KeyError, csv.Error) as exc:
+    except (OSError, ValueError, KeyError, TypeError, csv.Error) as exc:
         _warn(f"the cache could not be read ({exc!r}); it is set aside and rebuilt")
         path.replace(path.with_suffix(".damaged"))
         return []
@@ -344,7 +344,7 @@ def _update(start, daily):
     rows = list(by_path.values())
     _save(rows)
     if not any(row["report"] == FINAL and row["value"] is not None for row in rows):
-        raise RuntimeError("No final Saturday count could be read from USDA.")
+        _warn("no final Saturday count could be read from USDA yet")
     return rows
 
 
