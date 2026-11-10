@@ -1,4 +1,4 @@
-"""Submission checks. Accuracy is scored later, once the actual values are settled."""
+"""Submission checks. Accuracy is scored later, once USDA publishes the week's inspections."""
 
 import json
 import math
