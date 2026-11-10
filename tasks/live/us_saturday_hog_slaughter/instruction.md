@@ -11,9 +11,11 @@ Agricultural Marketing Service in report 3658, "Actual Slaughter Under Federal
 Inspection": the Hogs figure in the row for that Saturday, in the Final issue for the week
 (Sunday to Saturday) that ends on the target date. A dash in the row means zero. USDA
 posts that issue on its My Market News site about 12 days after the Saturday, normally on
-a Thursday, and the forecast is settled on the first figure posted. Estimates of daily
-slaughter, such as those in USDA's daily report 3208, and counts that include plants not
-under federal inspection are different quantities.
+a Thursday at about 12:00 Eastern Time, and the forecast is settled on the first figure
+posted. Every issue is listed at
+https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=3658. Estimates
+of daily slaughter, such as those in USDA's daily report 3208, and counts that include
+plants not under federal inspection are different quantities.
 
 ## Inputs and environment
 
@@ -44,7 +46,8 @@ Write `/home/user/output/forecast.json` in this form:
   level increases.
 
 Each forecast is scored after the actual value is published, with the continuous
-ranked probability score (CRPS) of its quantiles, so both the center and spread matter.
+ranked probability score (CRPS) of its quantiles, so both the center and the spread
+matter.
 
 ## Collected materials
 
