@@ -1,7 +1,11 @@
-"""EIA's weekly national regular gasoline survey price; host-only, no credentials.
+"""EIA's weekly US regular gasoline retail price, series EMM_EPMR_PTE_NUS_DPG: X_d and
+first-published truth, both read from the series' history page on eia.gov, which needs no
+key. There is no public expert forecast of the weekly price, so there is no B.
 
-Use the public history HTML so the host needs only stdlib and pandas (no Excel
-engine or EIA API key). Values are Monday observations, not weekly averages.
+The page lists every Monday since 1990 as EIA publishes it now. EIA does not revise the
+series in practice (27 archived copies of the page from 2018 to 2026 all match today's
+values), and truth reads the page every day, so the value recorded for a Monday is the one
+of its release day.
 """
 
 from __future__ import annotations
@@ -12,7 +16,6 @@ import re
 import time
 from datetime import date, datetime, timedelta
 from datetime import time as clock
-from decimal import Decimal, InvalidOperation
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -21,27 +24,19 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 ZONE = ZoneInfo("America/New_York")
-HISTORY_START = date(2024, 1, 1)
 SERIES = "EMM_EPMR_PTE_NUS_DPG"
-HISTORY = f"https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s={SERIES}&f=W"
+URL = f"https://www.eia.gov/dnav/pet/hist/LeafHandler.ashx?n=PET&s={SERIES}&f=W"
 LABEL = "Weekly U.S. Regular All Formulations Retail Gasoline Prices"
-METHOD = "https://www.eia.gov/petroleum/gasdiesel/gas_proc-methods.php"
-SCHEDULE = "https://www.eia.gov/petroleum/gasdiesel/schedule.php"
-USER_AGENT = (
-    "agentic-forecasting-gasoline/1.0 "
-    "(https://github.com/rowingchenn/agentic-forecasting-tasks)"
-)
+USER_AGENT = "agentic-forecasting/1.0"
 MONTHS = {name: number for number, name in enumerate(calendar.month_abbr) if name}
 
 
-class _HistoryTable(HTMLParser):
-    """Collect table cells, including text split over nested formatting tags."""
+class _Table(HTMLParser):
+    """The text of every table row, one string per cell."""
 
     def __init__(self):
         super().__init__(convert_charrefs=True)
-        self.rows = []
-        self.row = None
-        self.cell = None
+        self.rows, self.row, self.cell = [], None, None
 
     def handle_starttag(self, tag, attrs):
         if tag == "tr":
@@ -59,8 +54,7 @@ class _HistoryTable(HTMLParser):
             self.cell = None
         elif tag == "tr" and self.row is not None:
             self.rows.append(self.row)
-            self.row = None
-            self.cell = None
+            self.row = self.cell = None
 
 
 def _now():
@@ -68,27 +62,19 @@ def _now():
 
 
 def _guard(run_date, spec):
+    if spec["schedule"]["timezone"] != ZONE.key:
+        raise ValueError("EIA's survey and release times are in America/New_York.")
     now = _now()
-    if spec["schedule"]["timezone"] != ZONE.key or run_date.weekday() != 3:
-        raise ValueError("Gasoline runs are Thursdays in America/New_York.")
-    if spec["horizons"] != [4]:
-        raise ValueError("Thursday runs forecast only the next Monday (horizon 4).")
-    cutoff = datetime.combine(
-        run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE
-    )
-    if now.date() != run_date or now >= cutoff:
-        raise RuntimeError(
-            "Fresh snapshots require the current local Thursday before cutoff."
-        )
+    cutoff = datetime.combine(run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE)
+    if run_date.weekday() != 3 or now.date() != run_date or now >= cutoff:
+        raise RuntimeError("Fresh snapshots require the current Thursday before the cutoff.")
     return now
 
 
 def _get():
     for attempt in range(4):
         try:
-            with urlopen(
-                Request(HISTORY, headers={"User-Agent": USER_AGENT}), timeout=60
-            ) as response:
+            with urlopen(Request(URL, headers={"User-Agent": USER_AGENT}), timeout=60) as response:
                 return response.read().decode("utf-8-sig")
         except HTTPError as exc:
             if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:
@@ -103,94 +89,63 @@ def _get():
     raise AssertionError("unreachable")
 
 
-def _parse(text, start, as_of):
-    if start < HISTORY_START or start.weekday() != 0 or start > as_of:
-        raise ValueError(
-            "Require a nonempty Monday-based history from January 2024 or later."
-        )
-    parser = _HistoryTable()
-    parser.feed(text)
-    parser.close()
-    if LABEL not in " ".join(re.sub("<[^>]+>", " ", text).split()):
-        raise ValueError("Unexpected EIA price series or frequency.")
+def _prices(start, today):
+    """Every Monday from start through today as the page lists it now (NaN where EIA shows
+    no value), and the date of the release the page reflects."""
+    if start.weekday() != 0:
+        raise ValueError("history_start must be a Monday.")
+    text = _get()
+    plain = " ".join(re.sub("<[^>]+>", " ", text).split())
+    if LABEL not in plain:
+        raise ValueError("EIA's page no longer shows the expected series.")
+    release = re.search(r"(?<!Next )Release Date: (\d{1,2}/\d{1,2}/\d{4})", plain)
+    table = _Table()
+    table.feed(text)
     values = {}
-    for row in parser.rows:
-        if not row or not re.fullmatch(r"\d{4}-[A-Za-z]{3}", row[0]):
+    # one row per month, "2026-Nov", then up to five pairs of "MM/DD" and price
+    for row in table.rows:
+        if not row or not re.fullmatch(r"\d{4}-[A-Z][a-z]{2}", row[0]):
             continue
         year, name = row[0].split("-")
         if name not in MONTHS or len(row) != 11:
-            raise ValueError("EIA monthly history table layout changed.")
-        year, month = int(year), MONTHS[name]
+            raise ValueError("EIA's monthly table layout changed.")
         for stamp, price in zip(row[1::2], row[2::2], strict=True):
             if not stamp:
-                if price:
-                    raise ValueError("Price has no observation date.")
                 continue
-            if not re.fullmatch(r"\d{2}/\d{2}", stamp):
-                raise ValueError("Invalid observation date.")
-            mm, dd = map(int, stamp.split("/"))
-            day = date(year, mm, dd)
-            if mm != month or day.weekday() != 0:
-                raise ValueError("Expected a Monday observation in the labelled month.")
-            if day < start or day > as_of:
+            month, day = map(int, stamp.split("/"))
+            d = date(int(year), month, day)
+            if month != MONTHS[name] or d.weekday() != 0:
+                raise ValueError(f"Unexpected survey date {d}: EIA's dates are Mondays.")
+            if not start <= d <= today:
                 continue
-            if day in values:
-                raise ValueError(
-                    "Duplicate weekly observation; do not choose a revision."
-                )
-            if price in ("", "--", "NA"):
-                values[day] = float("nan")
-                continue
-            try:
-                number = Decimal(price)
-            except InvalidOperation as exc:
-                raise ValueError("Invalid gasoline price.") from exc
-            if (
-                not number.is_finite()
-                or number <= 0
-                or number != number.quantize(Decimal("0.001"))
-            ):
-                raise ValueError(
-                    "Expected a positive price with at most three decimal places."
-                )
-            values[day] = float(number)
-    if not values or not any(math.isfinite(v) for v in values.values()):
-        raise ValueError("No published gasoline observations returned.")
+            if d in values:
+                raise ValueError(f"EIA lists {d} twice.")
+            # "--" and anything that is not a positive price count as not published
+            number = float(price) if re.fullmatch(r"\d+(\.\d+)?", price) else math.nan
+            values[d] = number if number > 0 else math.nan
+    if not values or all(math.isnan(v) for v in values.values()):
+        raise ValueError("EIA's page lists no prices in the requested range.")
     index = pd.date_range(start, max(values), freq="W-MON", name="timestamp")
-    history = pd.Series(
-        [values.get(d.date(), float("nan")) for d in index],
-        index=index,
-        name="target",
-        dtype=float,
-    )
-    raw = pd.DataFrame(
-        {
-            "date": index.strftime("%Y-%m-%d"),
-            "series": SERIES,
-            "price_usd_per_gallon": history.to_numpy(),
-        }
-    )
-    return history, raw
-
-
-def _history(start, as_of):
-    return _parse(_get(), start, as_of)
+    history = pd.Series([values.get(d.date(), math.nan) for d in index], index=index,
+                        name="target", dtype=float)
+    return history, release.group(1) if release else None
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
     start = date.fromisoformat(spec["x"]["history_start"])
-    history, raw = _history(start, run_date)
+    history, release = _prices(start, run_date)
     last = history.last_valid_index().date()
-    latest_monday = run_date - timedelta(days=3)
-    if last != latest_monday:
-        raise RuntimeError(
-            "This week's Monday price has not been published; skip a stale run."
-        )
+    # EIA publishes a Monday's price on the Tuesday, or the Wednesday after a Monday
+    # holiday, so a Thursday run normally has the Monday three days before it. A late
+    # release leaves that week empty; a run day is refused only when two weeks are missing.
+    if last < run_date - timedelta(days=10):
+        raise RuntimeError(f"EIA's latest published price is for {last}; two releases are missing.")
     _guard(run_date, spec)
-    index = pd.date_range(
-        start, run_date + timedelta(days=4), freq="W-MON", name="timestamp"
-    )
+    targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
+    if any(d.weekday() != 0 for d in targets):
+        raise ValueError("Target dates must be Mondays.")
+    index = pd.date_range(start, max(targets), freq="W-MON", name="timestamp")
     series = pd.DataFrame(
         {
             "target": history.reindex(index),
@@ -199,38 +154,31 @@ def snapshot(run_date: date, spec: dict) -> dict:
         },
         index=index,
     )
+    raw = pd.DataFrame({"date": history.index.strftime("%Y-%m-%d"),
+                        "usd_per_gallon": history.to_numpy()})
     return {
         "series": series,
         "last_observed": last,
-        "raw": {"eia_weekly_gasoline_prices.csv": raw},
+        "raw": {"eia_weekly_regular_gasoline.csv": raw},
         "sources": {
-            "gasoline": {
-                "name": "U.S. Energy Information Administration",
-                "url": HISTORY,
-                "series": SERIES,
-                "methodology": METHOD,
-                "release_schedule": SCHEDULE,
-                "data_use": "https://www.eia.gov/about/copyrights_reuse.php",
-            },
+            "gasoline": {"name": "US Energy Information Administration", "series": SERIES,
+                         "url": URL, "release_date": release},
             "as_of": as_of.isoformat(),
         },
         "covariate_notes": {
-            "iso_week": "ISO week number of the Monday observation date.",
-            "month": "Calendar month of the Monday observation date.",
+            "iso_week": "ISO week number of the Monday; may be 53.",
+            "month": "Month of the Monday.",
         },
     }
 
 
 def truth(today: date, spec: dict) -> pd.Series:
     if today > _now().date():
-        raise RuntimeError("Cannot settle future observations.")
-    # The pipeline retains the first recorded value. Never insert a NaN settlement,
-    # which update_truth would otherwise prevent a later published value replacing.
-    return _history(date.fromisoformat(spec["x"]["history_start"]), today)[0].dropna()
+        raise RuntimeError("Cannot settle future dates.")
+    # update_truth keeps the first value recorded for each Monday; a Monday EIA shows no
+    # value for is left out, so its later release can still settle it.
+    return _prices(date.fromisoformat(spec["x"]["history_start"]), today)[0].dropna()
 
 
 def baseline(run_date: date, spec: dict) -> dict:
-    return {
-        "source": {"report": "No matching public weekly expert forecast selected"},
-        "forecasts": [],
-    }
+    return {"source": {"name": "none: no public expert forecast of this series"}, "forecasts": []}

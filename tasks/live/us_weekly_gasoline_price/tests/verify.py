@@ -1,4 +1,4 @@
-"""Submission checks. Accuracy is scored later, once the actual values are settled."""
+"""Submission checks. Accuracy is scored later, once EIA publishes the actual values."""
 
 import json
 import math
@@ -31,10 +31,10 @@ def forecast_problems(data: object) -> list[str]:
             continue
         values = [quantiles[level] for level in levels]
         if not all(
-            isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) and v >= 0
+            isinstance(v, int | float) and not isinstance(v, bool) and math.isfinite(v) and v > 0
             for v in values
         ):
-            problems.append(f"{entry.get('target_date')}: values must be non-negative numbers")
+            problems.append(f"{entry.get('target_date')}: values must be positive numbers")
         elif any(low > high for low, high in zip(values, values[1:], strict=False)):
             problems.append(f"{entry.get('target_date')}: quantiles decrease")
     return problems
