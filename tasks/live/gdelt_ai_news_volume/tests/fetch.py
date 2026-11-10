@@ -295,8 +295,8 @@ def daily_counts(start: date, end: date, now: datetime) -> tuple[pd.DataFrame, d
 def snapshot(run_date: date, spec: dict) -> dict:
     """X_d as published right now: one row per UTC day from history_start to the last target
     date, `target` through the day before the run date, whose file GDELT posts at about 07:00
-    UTC on the run date, and empty after it. A day without a file, or whose file could not be
-    read, is left empty; only the newest day is required."""
+    UTC on the run date, and empty after it; on a day that file is late, through the day
+    before. A day without a file, or whose file could not be read, is left empty."""
     if spec["schedule"]["timezone"] != "UTC":
         raise ValueError("this target counts UTC days")
     start = date.fromisoformat(spec["x"]["history_start"])
@@ -304,10 +304,13 @@ def snapshot(run_date: date, spec: dict) -> dict:
     table, sources = daily_counts(start, latest, _now())
     counts = table.loc[table["status"] == READ, "ai_urls"]
     if pd.Timestamp(latest) not in counts.index:
-        raise RuntimeError(
-            f"GDELT's file for {latest} is not read; it is normally posted at 07:00 UTC on "
-            f"{run_date}: {FILES.format(day=latest)}"
-        )
+        if pd.Timestamp(latest - timedelta(days=1)) not in counts.index:
+            raise RuntimeError(
+                f"GDELT's files for {latest - timedelta(days=1)} and {latest} are not read; "
+                f"they are normally posted at 07:00 UTC the next day: {FILES.format(day=latest)}"
+            )
+        _warn(f"GDELT's file for {latest} is not read; X_d ends a day earlier")
+        latest -= timedelta(days=1)
     index = pd.date_range(start, run_date + timedelta(days=max(spec["horizons"])), name="timestamp")
     holidays = USFederalHolidayCalendar().holidays(index.min(), index.max())
     series = pd.DataFrame(

@@ -91,8 +91,9 @@ name = "AI article history"
 columns = ["target"]
 what = """\
   The target itself, every UTC day from 2025-01-01 through the day before the run date, \
-  whose file GDELT posts at 07:00 UTC on the run date. A day GDELT posted no file for \
-  (2025-06-14 to 07-01), or whose file could not be read, is left empty."""
+  whose file GDELT posts at 07:00 UTC on the run date; on a day GDELT is late, through two \
+  days before. A day GDELT posted no file for (2025-06-14 to 07-01), or whose file could \
+  not be read, is left empty."""
 why = """\
   History carries the level, the weekly cycle and how long a burst of coverage lasts: \
   over the 601 days from 2025-01-29 the count a week earlier missed by 17% of the mean on \
