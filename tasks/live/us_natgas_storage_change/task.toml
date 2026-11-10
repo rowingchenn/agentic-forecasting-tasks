@@ -6,8 +6,8 @@ name = "agentic-forecasting/us-natgas-storage-change-live"
 keywords = ["forecasting", "live", "energy"]
 
 [environment]
-cpus = 4
-memory_mb = 8192
+cpus = 8
+memory_mb = 32768
 
 [environment.env]
 AF_TIMEZONE = "America/New_York"
@@ -117,9 +117,10 @@ expert = true
 what = """\
   The economists' consensus as a run could see it. For past weeks, that week's own, in the \
   last version read before its release; a past week without one read carries the week \
-  before's print. For the forecast window, the newest week's consensus, carried forward: \
-  the previous cycle's issue, since the consensus for the first target week appears after \
-  the cutoff. The numbers are read from Forex Factory's weekly calendar feed, which lists \
+  before's print. For the forecast window, the newest consensus read for a week before the \
+  first target week, normally the week published that morning, carried forward: the \
+  previous cycle's issue, since the consensus for the first target week appears after the \
+  cutoff. The numbers are read from Forex Factory's weekly calendar feed, which lists \
   only the current week, and kept on the host from the first run on; until one has been \
   read, X_d has no such column."""
 why = """\
