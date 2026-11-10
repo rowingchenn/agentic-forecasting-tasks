@@ -1,7 +1,9 @@
-"""Host-only USDA weekly corn-inspection acquisition; stdlib + pandas, no key.
+"""Host-only USDA weekly corn export inspections: X_d and first-published truth. There is no
+official or expert forecast of this series, so there is no B.
 
-Use the source's week-ending field, not certification-year files. API aggregates
-are reconciled to independent count queries and a stable dataset update version.
+USDA's Grain Inspections dataset on AgTransport carries the figures of the weekly report
+WA_GR101, one row per inspection record; no key is required. USDA reloads the whole dataset
+when it adds a week, so earlier weeks appear as revised since.
 """
 
 from __future__ import annotations
@@ -10,8 +12,7 @@ import json
 import time
 from datetime import date, datetime, timedelta
 from datetime import time as clock
-from decimal import Decimal, InvalidOperation
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
@@ -19,161 +20,92 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 ZONE = ZoneInfo("America/New_York")
-START = date(2024, 1, 4)
-WEB = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
+PAGE = "https://agtransport.usda.gov/Exports/Grain-Inspections/sruw-w49i"
 API = "https://agtransport.usda.gov/resource/sruw-w49i.json"
-META = "https://agtransport.usda.gov/api/views/sruw-w49i.json"
-LIMIT = 5000
+LIMIT = 50000
 
 
 def _now():
     return datetime.now(ZONE)
 
 
+def _guard(run_date, spec):
+    now = _now()
+    cutoff = datetime.combine(run_date, clock.fromisoformat(spec["schedule"]["cutoff"]), ZONE)
+    if spec["schedule"]["timezone"] != ZONE.key:
+        raise ValueError("USDA labels its weeks with Eastern dates.")
+    if run_date.weekday() != 3 or now.date() != run_date or now >= cutoff:
+        raise RuntimeError("Fresh snapshots require the current Thursday before the cutoff.")
+    return now
+
+
 def _get(url):
-    for attempt in range(3):
+    for attempt in range(4):
         try:
-            with urlopen(
-                Request(url, headers={"User-Agent": "agentic-forecasting/1.0"}),
-                timeout=60,
-            ) as response:
+            request = Request(url, headers={"User-Agent": "agentic-forecasting/1.0"})
+            with urlopen(request, timeout=90) as response:
                 return json.load(response)
         except HTTPError as exc:
-            if attempt == 2 or exc.code not in (429, 500, 502, 503, 504):
+            if exc.code not in (429, 500, 502, 503, 504) or attempt == 3:
                 raise
             retry = exc.headers.get("Retry-After", "")
-            delay = min(60, int(retry)) if retry.isdigit() else 2**attempt
-        except (OSError, TimeoutError):
-            if attempt == 2:
+            delay = min(120, int(retry)) if retry.isdigit() else 2**attempt
+        except (URLError, TimeoutError):
+            if attempt == 3:
                 raise
             delay = 2**attempt
         time.sleep(delay)
     raise AssertionError("unreachable")
 
 
-def _integer(value):
-    try:
-        number = Decimal(str(value))
-    except InvalidOperation as exc:
-        raise ValueError("Invalid metric-ton amount or record count.") from exc
-    if not number.is_finite() or number < 0 or number != number.to_integral_value():
-        raise ValueError("Expected a finite nonnegative whole metric-ton amount/count.")
-    return int(number)
-
-
-def _schema(metadata):
-    columns = {c.get("fieldName"): c for c in metadata["columns"]}
-    for field, kind, name in [
-        ("date", "calendar_date", "Week Ending Date"),
-        ("grain", "text", "Grain"),
-        ("mt", "number", "MT"),
-    ]:
-        if (
-            columns.get(field, {}).get("dataTypeName") != kind
-            or columns.get(field, {}).get("name") != name
-        ):
-            raise ValueError("USDA field names, units or types changed; review source.")
-    if metadata.get("name") != "Grain Inspections" or not metadata.get("rowsUpdatedAt"):
-        raise ValueError("Unexpected USDA dataset or absent update timestamp.")
-
-
-def _parse(rows, stats, end):
-    if len(stats) != 1 or not isinstance(rows, list):
-        raise ValueError("Unexpected USDA aggregate/count response.")
-    total = stats[0]
-    count, weeks = _integer(total["records"]), _integer(total["weeks"])
-    if weeks != len(rows) or len(rows) >= LIMIT:
-        raise ValueError("Weekly response missing rows or reached the request limit.")
-    if _integer(total["valid_records"]) != count or (
-        count and _integer(total["min_mt"]) < 0
-    ):
-        raise ValueError("Missing or invalid source metric-ton values.")
-    observations, records = {}, 0
-    for row in rows:
-        stamp = pd.Timestamp(row["date"])
-        if stamp.tzinfo is not None or stamp != stamp.normalize():
-            raise ValueError("Expected an unzoned midnight week-ending date.")
-        day = stamp.date()
-        if day.weekday() != 3 or not START <= day <= end or stamp in observations:
-            raise ValueError("Unexpected, duplicate or out-of-range Thursday label.")
-        n = _integer(row["records"])
-        if n == 0 or _integer(row["valid_records"]) != n:
-            raise ValueError("Missing inspection amounts within a week.")
-        _integer(row["min_mt"])
-        observations[stamp] = float(_integer(row["target"]))
-        records += n
-    if records != count:
-        raise ValueError("Weekly row counts do not reconcile to source total.")
-    index = pd.date_range(START, end, freq="W-THU", name="timestamp")
-    return pd.Series(observations, name="target", dtype=float).reindex(index)
-
-
-def _history(end):
-    if end < START:
-        return pd.Series(dtype=float, name="target"), pd.DataFrame(), []
-    before = _get(META)
-    _schema(before)
-    where = f"grain='CORN' AND date >= '{START.isoformat()}T00:00:00' AND date <= '{end.isoformat()}T00:00:00'"
-    queries = [
-        {
-            "$select": "date,sum(mt) as target,count(*) as records,count(mt) as valid_records,min(mt) as min_mt",
-            "$where": where,
-            "$group": "date",
-            "$order": "date",
-            "$limit": LIMIT,
-        },
-        {
-            "$select": "count(*) as records,count(distinct date) as weeks,count(mt) as valid_records,min(mt) as min_mt",
-            "$where": where,
-        },
-    ]
-    urls = [API + "?" + urlencode(q) for q in queries]
-    rows, stats = [_get(url) for url in urls]
-    after = _get(META)
-    _schema(after)
-    if before["rowsUpdatedAt"] != after["rowsUpdatedAt"]:
-        raise RuntimeError(
-            "USDA dataset changed during acquisition; retry a fresh snapshot."
-        )
-    history = _parse(rows, stats, end)
-    raw = pd.DataFrame(rows)
-    raw["dataset_rows_updated_at"] = before["rowsUpdatedAt"]
-    raw["source_total_records"] = stats[0]["records"]
-    return history, raw, [META, *urls]
-
-
-def _guard(run_date, spec):
-    now = _now()
-    if (
-        run_date.weekday() != 3
-        or spec["horizons"] != [7]
-        or spec["schedule"]["timezone"] != ZONE.key
-        or spec["schedule"]["cutoff"] != "15:50"
-        or spec["x"]["history_start"] != START.isoformat()
-    ):
-        raise ValueError(
-            "Require Thursday, +7 days, 15:50 Eastern and January 2024 history."
-        )
-    start = datetime.combine(run_date, clock(14, 0), ZONE)
-    if now.date() != run_date or not start <= now < start.replace(hour=15, minute=50):
-        raise RuntimeError(
-            "Fresh snapshots require the current Thursday 14:00–15:50 Eastern."
-        )
-    return now
+def _weekly(spec, end):
+    """Corn inspected for export in each week from history_start to the week labelled `end`
+    or before, in metric tons, with the rows by port area it is summed from."""
+    start = date.fromisoformat(spec["x"]["history_start"])
+    if start.weekday() != 3:
+        raise ValueError("USDA weeks end on Thursdays; history_start must be one.")
+    query = {
+        "$select": "date,port,sum(mt) as metric_tons,count(*) as records,count(mt) as amounts",
+        "$where": f"grain = 'CORN' AND date between '{start}T00:00:00' and '{end}T00:00:00'",
+        "$group": "date,port",
+        "$order": "date,port",
+        "$limit": LIMIT,
+    }
+    url = f"{API}?{urlencode(query)}"
+    rows = pd.DataFrame(_get(url))
+    if rows.empty or len(rows) >= LIMIT:
+        raise ValueError("USDA returned no rows or reached the row limit.")
+    rows["date"] = pd.to_datetime(rows["date"], format="ISO8601")
+    for column in ("metric_tons", "records", "amounts"):
+        rows[column] = pd.to_numeric(rows[column], errors="raise")
+    if (rows["amounts"] != rows["records"]).any() or (rows["metric_tons"] < 0).any():
+        raise ValueError("Missing or negative metric tons in USDA's records.")
+    if (rows["date"].dt.dayofweek != 3).any():
+        raise ValueError("USDA week labels are not Thursdays; review the source.")
+    totals = rows.groupby("date")["metric_tons"].sum().rename("target")
+    totals.index.name = "timestamp"
+    raw = rows.drop(columns="amounts").rename(columns={"date": "week_ending"})
+    return totals, raw, url
 
 
 def snapshot(run_date: date, spec: dict) -> dict:
     as_of = _guard(run_date, spec)
-    last = run_date - timedelta(days=7)
-    history, raw, urls = _history(last)
-    if history.empty or history.isna().any() or history.index[-1].date() != last:
-        raise RuntimeError(
-            "Missing expected latest report or intervening week; skip stale run."
-        )
+    # A week ends on Thursday and USDA adds it on the Monday after, so a Thursday run normally
+    # has the week ending seven days before it.
+    history, raw, url = _weekly(spec, run_date - timedelta(days=4))
+    last = history.index[-1].date()
+    expected = pd.date_range(spec["x"]["history_start"], last, freq="W-THU")
+    if not history.index.equals(expected):
+        raise ValueError("Weeks are missing from USDA's history; do not fill them in.")
+    # A release delayed past Thursday (as in a lapse in appropriations) lets the run go ahead
+    # with the history USDA has published; older than four weeks, the source is broken.
+    if last < run_date - timedelta(days=28):
+        raise RuntimeError("USDA's latest published week is more than four weeks old.")
     _guard(run_date, spec)
-    index = pd.date_range(
-        START, run_date + timedelta(days=7), freq="W-THU", name="timestamp"
-    )
+    targets = [run_date + timedelta(days=h) for h in spec["horizons"]]
+    if any(d.weekday() != 3 for d in targets):
+        raise ValueError("Target dates must be Thursdays, the days that label USDA's weeks.")
+    index = pd.date_range(spec["x"]["history_start"], max(targets), freq="W-THU", name="timestamp")
     series = pd.DataFrame(
         {
             "target": history.reindex(index),
@@ -185,22 +117,20 @@ def snapshot(run_date: date, spec: dict) -> dict:
     return {
         "series": series,
         "last_observed": last,
-        "raw": {"usda_weekly_corn_aggregates.csv": raw},
+        "raw": {"usda_corn_by_port_area.csv": raw},
         "sources": {
-            "corn": {
-                "name": "USDA FGIS / AMS Grain Inspections",
-                "url": WEB,
-                "queries": urls,
-                "grain": "CORN",
-                "unit": "metric tons",
-                "rights": "https://www.usda.gov/policies-and-links",
+            "inspections": {
+                "name": "USDA AMS AgTransport, Grain Inspections (sruw-w49i)",
+                "page": PAGE,
+                "query": url,
+                "vintage": "as published at the snapshot: the latest week as first published, "
+                "earlier weeks as revised since",
             },
             "as_of": as_of.isoformat(),
-            "history_vintage": "As available at acquisition; may include revisions",
         },
         "covariate_notes": {
-            "iso_week": "ISO week of the Thursday reporting-week label.",
-            "month": "Month of the Thursday reporting-week label.",
+            "iso_week": "ISO week number of the Thursday that ends the week; may be 53.",
+            "month": "Month of the Thursday that ends the week.",
         },
     }
 
@@ -208,28 +138,13 @@ def snapshot(run_date: date, spec: dict) -> dict:
 def truth(today: date, spec: dict) -> pd.Series:
     if today > _now().date():
         raise RuntimeError("Cannot settle future dates.")
-    # A target Thursday becomes eligible on the following Monday, never mid-period.
-    end = today - timedelta(days=4)
-    end -= timedelta(days=(end.weekday() - 3) % 7)
-    return _history(end)[0].dropna()
+    # Only weeks whose Monday release day has come; update_truth keeps the first value seen,
+    # so the revision in the following Monday's report is not used.
+    return _weekly(spec, today - timedelta(days=4))[0]
 
 
 def baseline(run_date: date, spec: dict) -> dict:
     return {
-        "source": {"report": "No matching public expert weekly forecast verified"},
+        "source": {"name": "none: no official or expert forecast of this series"},
         "forecasts": [],
     }
-
-
-def reference_forecast(series: pd.Series) -> float:
-    """Four latest consecutive observed weekly totals; a simple reference, not expert B.
-
-    Supply snapshot's target column. With this schedule the latest observation is
-    two weekly labels before the target; do not accidentally use the unpublished week.
-    """
-    last = series.dropna().tail(4)
-    if len(last) != 4 or not last.index.equals(
-        pd.date_range(last.index[0], periods=4, freq="W-THU")
-    ):
-        raise ValueError("Reference requires four consecutive observed Thursday weeks.")
-    return float(last.mean())
