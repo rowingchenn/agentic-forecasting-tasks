@@ -78,7 +78,7 @@ url = "https://www.gdeltproject.org/data.html#rawdata"
 [metadata.agentic-forecasting.schedule]
 snapshot = "08:15"
 every_days = 1
-first_run = "2026-11-16"
+first_run = "2026-11-12"
 
 [metadata.agentic-forecasting.x]
 history_start = "2025-01-01"

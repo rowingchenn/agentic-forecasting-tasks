@@ -66,7 +66,7 @@ url = "https://droughtmonitor.unl.edu/DmData/DataTables.aspx"
 [metadata.agentic-forecasting.schedule]
 snapshot = "12:00"
 every_days = 7
-first_run = "2026-11-19"
+first_run = "2026-11-12"
 
 [metadata.agentic-forecasting.x]
 history_start = "2000-01-04"

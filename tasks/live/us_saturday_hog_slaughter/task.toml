@@ -68,7 +68,7 @@ url = "https://mymarketnews.ams.usda.gov/filerepo/reports?field_slug_id_value=36
 [metadata.agentic-forecasting.schedule]
 snapshot = "12:05"
 every_days = 7
-first_run = "2026-11-20"
+first_run = "2026-11-13"
 
 [metadata.agentic-forecasting.x]
 history_start = "2024-01-07"

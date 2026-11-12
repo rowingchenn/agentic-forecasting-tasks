@@ -72,7 +72,7 @@ url = "https://www.emi.ea.govt.nz/Wholesale/Datasets/DispatchAndPricing/FinalEne
 [metadata.agentic-forecasting.schedule]
 snapshot = "10:10"
 every_days = 1
-first_run = "2026-11-18"
+first_run = "2026-11-13"
 
 [metadata.agentic-forecasting.x]
 history_start = "2023-01-01"
