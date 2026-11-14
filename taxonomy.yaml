@@ -120,6 +120,7 @@ domains:
 
 facets:
   driver:
+    geophysical: Geophysical processes
     weather: Weather and climate
     epidemic: Disease transmission
     economic: Economic conditions and policy
