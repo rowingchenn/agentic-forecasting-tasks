@@ -1,0 +1,109 @@
+schema_version = "1.4+ale.1"
+artifacts = ["/home/user/output"]
+
+[task]
+name = "agentic-forecasting/us-weekly-chicken-price-live"
+keywords = ["forecasting", "live", "economy", "food-prices"]
+
+[environment]
+cpus = 8
+memory_mb = 32768
+
+[environment.env]
+AF_TIMEZONE = "America/New_York"
+AF_CUTOFF = "17:15"
+AF_HORIZONS = "[7, 14]"
+AF_QUANTILE_LEVELS = "[0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]"
+
+[agent]
+user = "user"
+timeout_sec = 5400
+network_mode = "public"
+
+[verifier]
+timeout_sec = 120
+
+[metadata]
+network_justification = """\
+  Live forecasting measures how well the agent acquires its own information from the \
+  open internet; restricting access would remove the capability being evaluated."""
+
+[metadata.agentic-forecasting]
+target = "us_weekly_chicken_price"
+title = "US weekly advertised chicken-breast price"
+question = """\
+  What national average advertised price for boneless skinless chicken breast in value \
+  packs will USDA report for each of the next two weeks?"""
+taxonomy = "economy/consumer-prices"
+driver = "economic"
+domain = "Food prices"
+region = "United States, including Alaska and Hawaii"
+unit = "USD/lb"
+tradable = false
+summary = """\
+  The average price at which major US grocery chains advertise fresh boneless skinless \
+  chicken breast in value packs in their weekly ads, weighted by the number of stores each \
+  ad covers, as the US Department of Agriculture (USDA) reports it every Friday. It is a \
+  promotional price, not the average shelf or checkout price. Its level moves over months \
+  with the chicken market; from week to week it moves with which chains feature the item \
+  and at what price, so the chains' ads and the wholesale market add information that \
+  history alone does not contain."""
+
+[metadata.agentic-forecasting.y]
+definition = """\
+  USDA AMS report 2756, Weekly Grocery Store Chicken Feature Activity, Report Details: the \
+  row with region NATIONAL, section Parts, type "Breast, Boneless/Skinless" and \
+  package_size Value (before September 2024 the type "BREAST, BONELESS/SKINLESS, VALUE \
+  PACK"), environment Conventional, condition Fresh, price_unit Per lb, in the issue whose \
+  report_end_date is the target Friday; its price_avg, the average of the advertised \
+  prices over the eight regions including Alaska and Hawaii, weighted by the number of \
+  stores each ad covers, in dollars per pound."""
+settlement = """\
+  First published value, normally in the issue USDA posts on the Friday that ends the \
+  week, or earlier in the week when the Friday is a federal holiday. Of the 149 issues \
+  from 2024 to 2026-11-06, 145 were posted on the Friday, between 09:46 and 13:59 Eastern \
+  (half by 11:29), and four earlier in a week whose Friday was a holiday. The pipeline \
+  reads the report's data every day at 15:30 Eastern and keeps the first value it \
+  sees. USDA does not revise the figure in practice: today's data match the PDF issues as \
+  posted, in all 153 weeks of 2021 to 2023 compared and in the issues of 2025-09-26 and \
+  2026-11-06. A week without an issue is not scored."""
+
+[metadata.agentic-forecasting.y.source]
+name = "USDA Agricultural Marketing Service, Weekly Grocery Store Chicken Feature Activity (report 2756)"
+url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
+
+[metadata.agentic-forecasting.schedule]
+snapshot = "15:30"
+every_days = 7
+first_run = "2026-11-13"
+
+[metadata.agentic-forecasting.x]
+history_start = "2021-01-01"
+frequency = "weekly, weeks dated on the Friday that ends them"
+given_to = "TSFMs only; agents find their own information"
+raw = ["The national value-pack breast rows of report 2756 as published at the snapshot, with the number of stores advertising and the price range"]
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Advertised price history"
+columns = ["target"]
+what = """\
+  The target itself, every week from the one ending 2021-01-01 through the run date's, \
+  posted that morning. The four weeks the report's data lack (2022-04-01, 2022-09-16, \
+  2022-12-02, 2023-01-13) and a week whose issue is late are left empty."""
+why = """\
+  The level moves over months: the yearly average was $2.27 in 2021, $2.94 in 2022, $2.39 \
+  in 2023 and $2.86 in 2025. Around it the weekly price varies by about 21 cents (the \
+  standard deviation since 2024 around a 13-week average), with little carried from one \
+  week to the next, so an average of recent weeks carries most of the signal."""
+source = "USDA AMS report 2756, Report Details"
+url = "https://mymarketnews.ams.usda.gov/viewReport/2756"
+
+[[metadata.agentic-forecasting.x.groups]]
+name = "Calendar"
+columns = ["iso_week", "month"]
+what = "ISO week number and month of each Friday, including the target dates."
+why = """\
+  Chains advertise chicken about a quarter less in November and December, when the \
+  holiday ads feature turkey, and most in July and August. The price itself shows little \
+  seasonal pattern."""
+source = "computed"
